@@ -5,7 +5,7 @@ SET DATESTYLE TO 'ISO, YMD';
 
 -------------------------------------------------------------------------------
 /*
-Query 5.9. Trips  where the Pm25 increases throughout the entire trip.
+Query 5.8. Trips  where the Pm25 increases throughout the entire trip.
 
 IncrPm25: Trip[sign(derivative(Pm25)) > 0]
 Trip[IncrPm25 AND getTime(IncrPm25) = getTime(Trip)]
@@ -58,7 +58,7 @@ ORDER BY TripId;
 
 -------------------------------------------------------------------------------
 /*
-5.10. Trips where the Pm25 increases for at least 1.5 minutes and
+5.9. Trips where the Pm25 increases for at least 1.5 minutes and
 then decreases for at least 1.5 minutes, such that in both episodes the Pm25
 is higher than 125 and the temperature is higher than 20 degrees.
 
@@ -152,7 +152,7 @@ ORDER BY e.TripId;
 -------------------------------------------------------------------------------
 
 /*
-Query 5.11. Trips that have at some point the \textsf{Pm25} lower than 100 and
+Query 5.10. Trips that have at some point the \textsf{Pm25} lower than 100 and
 later reach a value higher than 400, such that the elapsed time between
 the increase of values in less than 1 minute.
 
@@ -227,7 +227,7 @@ ORDER BY TripId, AtTime;
 
 -------------------------------------------------------------------------------
 /*
-Query 5.12. Trips that travel all their way under a temperature higher than
+Query 5.11. Trips that travel all their way under a temperature higher than
 25 degrees and such that at in at least two episodes longer than thirty minutes,
 the Pm25 is higher than 150.
 */
@@ -315,7 +315,7 @@ ORDER BY TripId, StartTime;
 
 -------------------------------------------------------------------------------
 /*
-Query 5.13.
+Query 5.12.
 Trips such that there is at least a 30-minute episode where the \textsf{Pm25}
 is higher than 300 in cloudy conditions and with humidity higher than 80\%.
 
@@ -394,7 +394,7 @@ ORDER BY TripId, StartTime;
 
 -------------------------------------------------------------------------------
 /*
-Query 5.14. Trips that traversed at least twice the same cell with exactly
+Query 5.13. Trips that traversed at least twice the same cell with exactly
 one different cell in between.
 */
 
