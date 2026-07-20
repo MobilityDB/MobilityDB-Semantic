@@ -17,12 +17,10 @@ git clone https://github.com/MobilityDB/MobilityDB
 ```
 and then building the repository. Installing MobilityDB from the precompiled packages, for example using `sudo apt install` in Linux,  does **not** work with this repository.
 
-Input Data
-----------
+Touristic Dataset
+-----------------
 
-The directory `data` contains the input files for the hypothetical touristic dataset in Paris. Loading this dataset can be done as follows.
-
-Storing the Paris input data in PostgreSQL can be done as follows.
+The file `paris_tours.sql` in this directory contains the data for the hypothetical touristic dataset. Storing the Paris input data in PostgreSQL can be done as follows.
 ```
 ~/src/MobilityDB-Semantic$ createdb paris
 ~/src/MobilityDB-Semantic$ psql paris
@@ -50,14 +48,38 @@ CREATE TABLE
 INSERT 0 10
 ```
 
-The `data/` directory also expects the data from two-month pollution data in Delhi corresponding to the months of November and December, 2020 as well as the districts of New Delhi. The pollution data can be obtained from this [link](https://www.cse.iitd.ac.in/pollutiondata/delhi). Alternatively, you can find the data files in the following [ZIP](Delhi_Pollution_2020-Nov-Dec.zip) file. The contents of this ZIP file should be extracted into the `data/` directory.
+The queries for both the discrete and the continuous approaches can be found in the file `paris_queries.sql`.
 
-In order to get the districts of New Delhi we need to download OSM data from New Delhi obtained from the this [link](https://geo2day.com/asia/india/national_capital_territory_of_delhi.html)
-The file `national_capital_territory_of_delhi.pbf` must be located in the `data/` directory.
+Pollution Dataset
+-----------------
+
+The  repository also expects the data from two-month pollution data in Delhi corresponding to November and December, 2020. The pollution data can be obtained from this [link](https://www.cse.iitd.ac.in/pollutiondata/delhi). Alternatively, the [ZIP file](https://docs.mobilitydb.com/pub/Delhi_Pollution_2020-Nov-Dec.zip) can be used for obtaining the data. The contents of this ZIP file should be extracted into the top directory. Please notice that the files in [HuggingFace](https://huggingface.co/datasets/sachin-iitd/DelZhiPollDataset) have different structure than the original files and cannot be used with this repository.
+
+The repository also expects weather data in Delhi during the corresponding period. The file `delhi_weather.csv` in this directory contains the weather data obtained from [OpenMeteo](https://open-meteo.com/) corresponding to the trajectories in the pollution data set. We downloaded hourly data comprising temperature, humidity, cloud cover, rain, and wind speed corresponding to the time period between November 1st to December 31st, 2020.
+
+We computed the center point of the extent of the dataset as follows.
+```sql
+WITH Extent(MinLon, MinLat, MaxLon, MaxLat) AS (
+  SELECT MIN(Lon), MIN(Lat), MAX(Lon), MAX(Lat)
+  FROM DelhiInput )
+SELECT MinLon + (MaxLon - MinLon) / 2 AS CenterLon,
+  MinLat + (MaxLat - MinLat) / 2 AS CenterLat
+FROM Extent;
+-- 77.21044149999999 | 28.603272625000002
+```
+
+Then we obtained the weather data with the following REST API request.
+```bash
+https://open-meteo.com/en/docs/historical-weather-api?start_date=2020-11-01&end_date=2020-12-31&latitude=28.603272&
+  longitude=77.210441&hourly=temperature_2m,relative_humidity_2m,cloud_cover,rain,wind_speed_10m
+```
+We downloaded the data into into a CSV file, and did some basic preparation of this file dropping the first three rows. For simplicity, and given the very small variation within the city, we assume that these hourly data remain uniform in all the city area considered in this study. 
+
+The  repository also expects the data from the districts of New Delhi. In order to get this data we need to download OSM data from New Delhi obtained from the this [link](https://geo2day.com/asia/india/national_capital_territory_of_delhi.html). The file `national_capital_territory_of_delhi.pbf` must be located in the home directory.
 
 We load the OSM data into PostgreSQL as follows.
 ```bash
-osm2pgsql -U <user> -W -H localhost -P 5432 -d <database> --create --slim -G --hstore data/national_capital_territory_of_delhi.pbf
+osm2pgsql -U <user> -W -H localhost -P 5432 -d <database> --create --slim -G --hstore national_capital_territory_of_delhi.pbf
 ```
 
 Then, we can execute the script that load the Delhi input data into PostgreSQL as follows.
@@ -103,9 +125,6 @@ NOTICE:  Creating tables TripDistricts and TripDistrictsSeq
 Time: 1441282.565 ms (24:01.283)
 delhi=#
 ```
-
-Queries
--------
 
 The queries can be found in the following files
 
