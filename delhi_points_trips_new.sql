@@ -1,3 +1,19 @@
+/*****************************************************************************
+ * Queries over complete trips, discrete and continuous version.
+ *
+ * The discrete version reads table TripPoints, one row per observation. The
+ * continuous version reads table Trips, one row per trip, holding the trip as
+ * a temporal point and the measures as temporal values (tfloat Pm25, tjsonb
+ * Weather). No value is averaged in either table, so the two versions see the
+ * same information and any difference in their answers comes from the query
+ * and not from the data. This is what distinguishes this file from
+ * delhi_grid.sql, where the discrete version reads per-cell averages.
+ *
+ * Every pair of queries below is reported with the same shape, one row per
+ * episode or one row per trip on both sides, so that the two counts are
+ * directly comparable.
+ *****************************************************************************/
+
 
 SET TIMEZONE TO 'Asia/Kolkata';
 SET DATESTYLE TO 'ISO, YMD';
@@ -27,6 +43,14 @@ ORDER BY TripId, StartTime;
 -- Time: 14708.198 ms (00:14.708)
 
 -- TEMPORAL VERSION
+
+/* The condition is on the whole trip, and %> is the always-comparison: it
+ * holds when the temporal value is greater than the argument at every instant
+ * of its definition. The trend of a tfloat is a temporal value like any
+ * other, so the query is a single predicate over it. The discrete version
+ * must pair each observation with the next one and then require the pair
+ * condition to hold for the whole group, which is what bool_and does. Both
+ * return the same 708 trips. */
 
 DROP TABLE IF EXISTS TQ8;
 CREATE TABLE TQ8 AS
@@ -129,6 +153,22 @@ ORDER BY e.TripId, e.EpisodeId;
 
 -- TEMPORAL VERSION
 
+/* An episode is a maximal period during which a condition holds. In the
+ * temporal version it is not reconstructed: whenTrue(trend(Pm25) #> 0) is
+ * the time when the Pm25 increases, segmentMinDuration keeps the parts of it
+ * lasting at least 1.5 minutes, and the sequences of the restricted trip are
+ * the episodes. The before of the pattern is the equality of the end of an
+ * increasing episode with the start of a decreasing one.
+ *
+ * The discrete version needs, in this order: a window function to reach the
+ * next observation, an interpolation to find where the trip crosses the 125
+ * threshold between two observations, a clipping of the segments to that
+ * threshold, a second window function for the trend, a third for the change
+ * of trend, a running sum to number the episodes, and a self join for the
+ * before. The interpolation is the part worth noting: the discrete version
+ * has to compute by hand, in SQL, the linear interpolation that the temporal
+ * type applies by definition. */
+
 DROP TABLE IF EXISTS TQ9;
 CREATE TABLE TQ9 AS
 WITH RestTrips(TripId, Pm25) AS (
@@ -229,6 +269,10 @@ ORDER BY p.TripId;
 
 -- TEMPORAL VERSION
 
+/* The two versions return the same 94 trips. The temporal version states the
+ * query in the order in which it is read: the time when the Pm25 is below
+ * 100, the time when it is above 400, and the first before the second. */
+
 DROP TABLE IF EXISTS TQ10;
 CREATE TABLE TQ10 AS
 WITH StartPm25(TripId, StartTime, Pm25) AS (
@@ -319,6 +363,13 @@ ORDER BY TripId, StartTime;
  * reported per episode, as in the discrete version, so that the two answers
  * are directly comparable. */
 
+/* The episodes are the spans of whenTrue(Pm25 #> 150): the discrete version
+ * must build them with a change-of-state flag and a running sum, and must
+ * additionally require COUNT(*) >= 2 to discard the episodes reduced to a
+ * single observation, which is meaningless for a temporal value. The always
+ * comparison %> gives the condition on the temperature over the whole trip
+ * without a grouping. */
+
 DROP TABLE IF EXISTS TQ11;
 CREATE TABLE TQ11 AS
 WITH Episode(TripId, AtTime) AS (
@@ -398,6 +449,11 @@ ORDER BY TripId, StartTime;
 -- Time: 35210.968 ms (00:35.211)
 
 -- TEMPORAL VERSION
+
+/* The condition combines three temporal Booleans with &, the temporal and,
+ * and the episodes are the spans of the result. The discrete version has to
+ * evaluate the three conditions per observation and then group the
+ * observations that satisfy all three into episodes. */
 
 DROP TABLE IF EXISTS TQ12;
 CREATE TABLE TQ12 AS
