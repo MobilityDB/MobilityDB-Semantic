@@ -81,7 +81,7 @@ ContainedBy(TripId, Name, AtTime) AS (
   FROM Trips t, Districts d
   WHERE eIntersects(t.Trip, d.Geom)
   ORDER BY t.TripId, d.Name )
-SELECT m1.TripId, m1.Name, m1.AtTimestamp, c.AtTime, m2.AtTimestamp
+SELECT m1.TripId, m1.Name, m1.AtTimestamp AS StartTimestamp, c.AtTime, m2.AtTimestamp AS EndTimestamp
 FROM Meets m1, ContainedBy c, Meets m2
 WHERE m1.TripId = c.TripId AND m1.Name = c.Name AND
   m2.TripId = c.TripId AND m2.Name = c.Name AND

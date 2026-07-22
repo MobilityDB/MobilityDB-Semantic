@@ -139,12 +139,12 @@ WITH RestTrips(TripId, Pm25) AS (
     whenTrue(tfloat(Weather, 'Temperature', 'step') #> 20) IS NOT NULL ),
 IncrPm25(TripId, Pm25) AS (
   SELECT TripId, unnest(sequences(atTime(Pm25, 
-    whenTrue(segmentMinDuration(atValues(trend(Pm25) #> 0, true),
+    whenTrue(segmentMinDuration(atValue(trend(Pm25) #> 0, true),
       interval '1.5 minute', false)))))
   FROM RestTrips ),
 DecrPm25(TripId, Pm25) AS (
   SELECT TripId, unnest(sequences(atTime(Pm25,
-    whenTrue(segmentMinDuration(atValues(trend(Pm25) #< 0, true),
+    whenTrue(segmentMinDuration(atValue(trend(Pm25) #< 0, true),
       interval '1.5 minute', false)))))
   FROM RestTrips )
 SELECT i.TripId, i.Pm25 AS IncrPm25, d.Pm25 AS DecrPm25
@@ -158,11 +158,11 @@ ORDER BY TripId, IncrPm25;
 -------------------------------------------------------------------------------
 
 SELECT DISTINCT TripId FROM q5_9 EXCEPT SELECT DISTINCT TripId FROM tq5_9 ORDER BY 1;
-(0 rows)
+-- (0 rows)
 
 SELECT DISTINCT TripId FROM tq5_9 EXCEPT SELECT DISTINCT TripId FROM q5_9 ORDER BY 1;
-   2245
-(1 row)
+--    2245
+-- (1 row)
 
 /*
 The missing trip in q5_9 is 2245 and it is not considered in the non-temporal 
@@ -243,10 +243,10 @@ ORDER BY TripId;
 -------------------------------------------------------------------------------
 
 SELECT DISTINCT tripid FROM tq5_10 EXCEPT SELECT DISTINCT tripid FROM q5_10 ORDER BY 1 LIMIT 5;
-(0 rows)
+-- (0 rows)
 
 SELECT DISTINCT tripid FROM q5_10 EXCEPT SELECT DISTINCT tripid FROM tq5_10 ORDER BY 1 LIMIT 5;
-(0 rows)
+-- (0 rows)
 
 -------------------------------------------------------------------------------
  

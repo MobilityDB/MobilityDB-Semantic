@@ -229,7 +229,7 @@ ORDER BY h.TourId;
 */
 
 /*****************************************************************************/
-/* COMENTED OUT
+/* COMENTED OUT */
 /*****************************************************************************/
 
 /*
@@ -439,25 +439,37 @@ ORDER BY f.TourId;
 */
 
 -- TEMPORAL VERSION
-
-WITH Step(TourId, Tour) AS (
+-- Each PoI visit is a segment of the temporal tour (a tjsonb). We extract the PoI
+-- attributes with startValue(Seg)->>'...' and its start time with startTimestamp(Seg),
+-- then apply the same before + same-part-of-day self-join as the discrete version.
+WITH Step(TourId, Seg) AS (
   SELECT TourId, unnest(segments(Tour))
   FROM TempTour ),
-DayPart AS (
- SELECT *,
+DayPart(TourId, StepNo, Name, Price, StartT, PartOfDay) AS (
+  SELECT TourId,
+    (startValue(Seg)->>'StepNo')::integer,
+    startValue(Seg)->>'Name',
+    startValue(Seg)->>'Price',
+    startTimestamp(Seg),
     CASE
-      WHEN EXTRACT(HOUR FROM lower(AtTime)) BETWEEN 8 AND 11
-        THEN 'Morning'
-      WHEN EXTRACT(HOUR FROM lower(AtTime)) BETWEEN 12 AND 17
-        THEN 'Afternoon'
-      WHEN EXTRACT(HOUR FROM lower(AtTime)) BETWEEN 18 AND 23
-        THEN 'Evening'
+      WHEN EXTRACT(HOUR FROM startTimestamp(Seg)) BETWEEN 8 AND 11 THEN 'Morning'
+      WHEN EXTRACT(HOUR FROM startTimestamp(Seg)) BETWEEN 12 AND 17 THEN 'Afternoon'
+      WHEN EXTRACT(HOUR FROM startTimestamp(Seg)) BETWEEN 18 AND 23 THEN 'Evening'
       ELSE 'Night'
-    END AS partOfDay
+    END
   FROM Step )
-... 
--- Continue as the non-temporal above
--- I haven't found another way to write a temporal version of the above query
+SELECT DISTINCT f.TourId, f.StepNo AS FirstStep, f.Name AS FirstName,
+  s.StepNo AS SecondStep, s.Name AS SecondName, f.PartOfDay
+FROM DayPart f, DayPart s
+WHERE f.TourId = s.TourId AND f.StartT < s.StartT AND
+  s.Price = 'Moderate' AND f.PartOfDay = s.PartOfDay
+ORDER BY f.TourId;
+
+/*
+ tourid | firststep |   firstname   | secondstep |    secondname    | partofday
+--------+-----------+---------------+------------+------------------+-----------
+      9 |         1 | Musee d'Orsay |          2 | Le Petit Italien | Morning
+*/
 
 /*****************************************************************************/
 
@@ -490,7 +502,7 @@ WITH ModeratePrices(TourId, Tour, Location) AS (
   WHERE atValue(Tour->>'Price', text 'Moderate') IS NOT NULL )
 SELECT TourId, startValue(Tour->>'StepNo')::integer AS StepNo,
   startValue(Tour->>'Name') AS StepName, 
-  ST_Distance(startValue(m.Location), ST_Centroid(p.BufferGeom)) AS Distance
+  ST_Distance(startValue(m.Location), ST_Centroid(p.Geom)) AS Distance
 FROM ModeratePrices m, PoI p
 WHERE p.Name = 'Centre Pompidou' AND
   ST_DWithin(valueAtTimestamp(m.Location, startTimestamp(Tour)), p.Geom, 1000)

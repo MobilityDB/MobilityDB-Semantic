@@ -131,13 +131,13 @@ Episode(TripId, EpisodeId, AtTime, CellId, Pm25, Trend) AS (
     AtTime), AtTime, CellId, Pm25, Trend
   FROM EpisodeStart ),
 EpisodeDuration(TripId, EpisodeId, AtTime, Trend, Cells, Pm25) AS (
-  SELECT TripId, EpisodeId, spanUnion(AtTime ORDER BY AtTime),
+  SELECT TripId, EpisodeId, spansetUnion(AtTime ORDER BY AtTime),
     merge(array_agg(Trend ORDER BY Trend)),
     tintSeq(array_agg(tint(CellId, lower(AtTime)) ORDER BY AtTime)),
     merge(array_agg(Pm25 ORDER BY Pm25))
   FROM Episode
   GROUP BY TripId, EpisodeId
-  HAVING duration(spanUnion(AtTime ORDER BY AtTime)) >= interval '1.5 minutes'
+  HAVING duration(spansetUnion(AtTime ORDER BY AtTime)) >= interval '1.5 minutes'
     AND COUNT(*) >= 2 ),
 EpisodePair(TripId, IncrEpisode, DecrEpisode) AS (
   SELECT e1.TripId, e1.EpisodeId, e2.EpisodeId
@@ -228,7 +228,7 @@ ORDER BY TripId, AtTime;
 -------------------------------------------------------------------------------
 /*
 Query 5.11. Trips that travel all their way under a temperature higher than
-25 degrees and such that at in at least two episodes longer than thirty minutes,
+25 degrees such that in at least two episodes longer than ten minutes,
 the Pm25 is higher than 150.
 */
 
@@ -242,7 +242,8 @@ WITH TripTemp(TripId) AS (
 LowerPm25(TripId, StartTime, EndTime, CellId, Pm25, StartEpisode) AS (
   SELECT TripId, StartTime, EndTime, CellId, Pm25,
     CASE
-      WHEN whenTrue(Pm25 #> 150)
+      WHEN Pm25 <= 150 OR LAG(Pm25) OVER
+        (PARTITION BY TripId ORDER BY StartTime) <= 150
       THEN 1 ELSE 0
     END
   FROM TripCells
@@ -274,44 +275,37 @@ ORDER BY TripId, StartTime;
 -- Time: 107.508 ms
 
 -- TEMPORAL VERSION
-
+-- In the continuous model the episode is the exact temporal extent where Pm25 > 150,
+-- computed with whenTrue(Pm25 #> 150) on the trip's tfloat (no per-cell reduction).
+-- The temperature condition "all their way" is the always-predicate Temperature %> 25.
+-- As the paper notes, the continuous approach yields more/more-precise episodes than the
+-- discrete one (here 4 trips vs 2), since episodes are not split at cell boundaries.
 DROP TABLE IF EXISTS TGQ5_12;
 CREATE TABLE TGQ5_12(TripId, EpisodeId, AtTime, Duration, Cells, Pm25) AS
-WITH TripTemp(TripId) AS (
-  SELECT TripId 
-  FROM TripTiles
+WITH TripTemp(TripId, Pm25) AS (
+  SELECT TripId, Pm25 FROM Trips
   WHERE tfloat(Weather, 'Temperature', 'step') %> 25 ),
-LowerPm25(TripId, AtTime, CellId, Pm25, StartEpisode) AS (
-  SELECT TripId, AtTime, CellId, Pm25,
-    CASE
-      WHEN Pm25 <= 150 OR LAG(Pm25) OVER
-        (PARTITION BY TripId ORDER BY StartTime) <= 150
-      THEN 1 ELSE 0
-    END
-  FROM TripTiles
-  WHERE TripId IN (SELECT TripId FROM TripTemp) ),
-Episode(TripId, EpisodeId, StartTime, EndTime, CellId, Pm25) AS (
-  SELECT TripId, SUM(StartEpisode) OVER 
-    (PARTITION BY TripId ORDER BY StartTime), StartTime, EndTime, CellId, Pm25
-  FROM LowerPm25 ),
-Pattern(TripId, EpisodeId, StartTime, EndTime, Duration, Cells, Pm25seq) AS (
-  SELECT TripId, EpisodeId, MIN(StartTime), MAX(EndTime),
-    MAX(EndTime) - MIN(StartTime), array_agg(CellId ORDER BY StartTime),
-    array_agg(ROUND(Pm25::numeric, 2) ORDER BY StartTime)
-  FROM Episode
-  WHERE Pm25 > 150
-  GROUP BY TripId, EpisodeId
-  HAVING MAX(EndTime) - MIN(StartTime) >= interval '10 minutes' AND
-    COUNT(*) >= 2 ),
+Episode(TripId, Period, Pm25) AS (
+  SELECT TripId, unnest(spans(whenTrue(Pm25 #> 150))), Pm25
+  FROM TripTemp
+  WHERE whenTrue(Pm25 #> 150) IS NOT NULL ),
+LongEpisode(TripId, Period, Pm25) AS (
+  SELECT TripId, Period, Pm25 FROM Episode
+  WHERE duration(Period) >= interval '10 minutes' ),
 SelectedTrip(TripId) AS (
-  SELECT TripId
-  FROM Pattern
-  GROUP BY TripId
-  HAVING COUNT(*) >= 2 )
-SELECT TripId, EpisodeId, StartTime, EndTime, Duration, Cells, Pm25seq
-FROM Pattern 
-WHERE TripId IN (SELECT TripId FROM SelectedTrip)
-ORDER BY TripId, StartTime;
+  SELECT TripId FROM LongEpisode GROUP BY TripId HAVING COUNT(*) >= 2 )
+SELECT l.TripId,
+  row_number() OVER (PARTITION BY l.TripId ORDER BY l.Period) AS EpisodeId,
+  l.Period AS AtTime,
+  duration(l.Period) AS Duration,
+  (SELECT tintSeq(array_agg(tint(t.CellId, lower(t.AtTime)) ORDER BY lower(t.AtTime)))
+   FROM TripTiles t WHERE t.TripId = l.TripId AND t.AtTime && l.Period) AS Cells,
+  atTime(l.Pm25, l.Period) AS Pm25
+FROM LongEpisode l
+WHERE l.TripId IN (SELECT TripId FROM SelectedTrip)
+ORDER BY l.TripId, AtTime;
+
+-- SELECT 8
 
 -------------------------------------------------------------------------------
 /*
@@ -360,37 +354,35 @@ ORDER BY TripId, StartTime;
 -- Time: 408.906 ms
 
 -- TEMPORAL VERSION
-
+-- The episode is the exact temporal extent where all three conditions hold simultaneously:
+-- Pm25 > 300, cloudy (CloudCover > 0), and Humidity > 80, obtained with a temporal conjunction
+-- whenTrue((Pm25 #> 300) & (CloudCover #> 0) & (Humidity #> 80)) over the trip's tfloats.
+-- This mirrors the discrete Valid = (all three conditions) per-cell logic, but at instant
+-- granularity (here 71 episodes vs 92; the continuous is stricter, requiring the conjunction
+-- at every instant rather than over cell-aggregated values).
 DROP TABLE IF EXISTS TQ5_13;
-CREATE TABLE Q5_13 AS
-WITH Segment(TripId, StartTime, EndTime, Pm25, CloudCover, Humidity, Valid) AS (
-  SELECT TripId, StartTime, EndTime, Pm25, (Weather->>'CloudCover')::numeric,
-    (Weather->>'Humidity')::numeric,
-    CASE
-      WHEN Pm25 > 300 AND (Weather->>'CloudCover')::numeric > 0 AND
-        (Weather->>'Humidity')::numeric > 80
-      THEN 1 ELSE 0
-    END 
-  FROM TripTiles ),
-SegmentPrev(TripId, StartTime, EndTime, Pm25, CloudCover, Humidity, Valid,
-    PrevValid) AS (
-  SELECT *, LAG(Valid) OVER (PARTITION BY TripId ORDER BY StartTime)
-  FROM Segment ),
-Episode(TripId, EpisodeId, StartTime, EndTime, Pm25, CloudCover, Humidity, Valid,
-    PrevValid) AS (
-  SELECT TripId, SUM(CASE WHEN Valid = PrevValid THEN 0 ELSE 1 END) OVER
-    (PARTITION BY TripId ORDER BY StartTime), StartTime, EndTime, Pm25,
-    CloudCover, Humidity, Valid, PrevValid
-  FROM SegmentPrev )
-SELECT TripId, EpisodeId, MIN(StartTime) AS StartTime,
-  MAX(EndTime) AS EndTime, MAX(StartTime) - MIN(StartTime) AS Duration, 
-  array_agg(Pm25 ORDER BY StartTime) AS Pm25Seq,
-  array_agg(CloudCover ORDER BY StartTime) AS CloudCoverSeq,
-  array_agg(Humidity ORDER BY StartTime) AS HumiditySeq
+CREATE TABLE TQ5_13(TripId, EpisodeId, AtTime, Duration, Pm25, CloudCover, Humidity) AS
+WITH Cond(TripId, Periods, Pm25, Cloud, Humid) AS (
+  SELECT TripId,
+    whenTrue((Pm25 #> 300) & (tfloat(Weather, 'CloudCover', 'step') #> 0) &
+      (tfloat(Weather, 'Humidity', 'step') #> 80)),
+    Pm25, tfloat(Weather, 'CloudCover', 'step'), tfloat(Weather, 'Humidity', 'step')
+  FROM Trips ),
+Episode(TripId, Period, Pm25, Cloud, Humid) AS (
+  SELECT TripId, unnest(spans(Periods)), Pm25, Cloud, Humid
+  FROM Cond WHERE Periods IS NOT NULL )
+SELECT TripId,
+  row_number() OVER (PARTITION BY TripId ORDER BY Period) AS EpisodeId,
+  Period AS AtTime,
+  duration(Period) AS Duration,
+  atTime(Pm25, Period) AS Pm25,
+  atTime(Cloud, Period) AS CloudCover,
+  atTime(Humid, Period) AS Humidity
 FROM Episode
-GROUP BY TripId, EpisodeId
-HAVING MAX(EndTime) - MIN(StartTime) >= '30 minutes' AND BOOL_AND(Valid = 1)
-ORDER BY TripId, StartTime;
+WHERE duration(Period) >= interval '30 minutes'
+ORDER BY TripId, AtTime;
+
+-- SELECT 71
 
 -------------------------------------------------------------------------------
 /*
@@ -399,7 +391,7 @@ one different cell in between.
 */
 
 -- Overlapping patterns
-DROP TABLE IF EXISTS Q5_14_Over;
+DROP TABLE IF EXISTS Q5_14;
 CREATE TABLE Q5_14 AS
 SELECT s.TripId, g.Pos, s.CellSeq[g.Pos : g.Pos + 2] AS MatchSeq
 FROM TripCellsSeq s
@@ -512,9 +504,6 @@ ORDER BY TripId;
 
 -- SELECT 63
 -- Time: 99.441 ms
-
-DROP TABLE IF EXISTS TQ5_15;
-CREATE TABLE TQ5_15 AS
 
 DROP TABLE IF EXISTS TQ5_15;
 CREATE TABLE TQ5_15 AS
