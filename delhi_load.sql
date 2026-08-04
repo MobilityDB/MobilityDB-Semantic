@@ -46,13 +46,14 @@ BEGIN
     RAISE NOTICE 'Inserting %', fileName;
   END LOOP;
 
+  RAISE NOTICE 'Creating geometry column in table DelhiInput';
+
   UPDATE DelhiInput
   SET Geom = ST_Transform(ST_Point(Lon, Lat, 4326), 7760);
 
 -------------------------------------------------------------------------------
 
   RAISE NOTICE 'Creating tables WeatherInput and WeatherHourly';
-
 
   /* Compute the center point of the extent of the dataset 
 
