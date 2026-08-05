@@ -75,8 +75,8 @@ ORDER BY TourId, HiltonStep;
 /*****************************************************************************/
 
 /*
- Tours that visit a museum and then a restaurant.
-
+Tours that go to a museum and then to a restaurant.
+ 
 Tour[before([Category = 'Museum'],[Category = 'Restaurant'])]
 */
 
@@ -89,13 +89,12 @@ Restaurant AS (
   SELECT *
   FROM TourPoI
   WHERE PoI->>'Category' = 'Restaurant')
-SELECT DISTINCT m.TourId, m.StepNo AS MuseumStep, m.PoI->>'Name' AS MuseumName,
-  r.StepNo AS RestStep, r.PoI->>'Name' AS RestName
+SELECT DISTINCT m.TourId, m.StepNo AS MuseumStep, r.StepNo AS RestStep, 
+  m.PoI->>'Name' AS MuseumName, r.PoI->>'Name' AS RestName
 FROM Museum m, Restaurant r
 WHERE m.TourId = r.TourId AND m.StepNo < r.StepNo
 ORDER BY TourId, MuseumStep;
  
-
 -- TEMPORAL VERSION
 
 WITH Museum(TourId, Tour) AS (

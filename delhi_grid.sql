@@ -5,14 +5,14 @@ SET DATESTYLE TO 'ISO, YMD';
 
 -------------------------------------------------------------------------------
 /*
-Query 5.8. Trips  where the Pm25 increases throughout the entire trip.
+Query 8. Trips during which the PM2.5 increases continuously.
 
 IncrPm25: Trip[sign(derivative(Pm25)) > 0]
 Trip[IncrPm25 AND getTime(IncrPm25) = getTime(Trip)]
 */
 
-DROP TABLE IF EXISTS GQ5_9;
-CREATE TABLE GQ5_9(TripId, Cells, Pm25Seq) AS
+DROP TABLE IF EXISTS GQ8;
+CREATE TABLE GQ8(TripId, Cells, Pm25Seq) AS
 WITH TrendPm25(TripId, CellId, Weather, Pm25, Trend) AS (
   SELECT TripId, CellId, Weather, Pm25, 
     SIGN(Pm25 - LAG(Pm25) OVER (PARTITION BY TripId ORDER BY StartTime))
@@ -35,8 +35,8 @@ ORDER BY TripId;
 
 -- TEMPORAL VERSION
 
-DROP TABLE IF EXISTS TGQ5_9;
-CREATE TABLE TGQ5_9(TripId, Cells, Pm25Seq) AS
+DROP TABLE IF EXISTS TGQ8;
+CREATE TABLE TGQ8(TripId, Cells, Pm25Seq) AS
 WITH TrendPm25(TripId, CellId, Weather, Pm25, Trend) AS (
   SELECT TripId, CellId, Weather, Pm25, trend(Pm25)
   FROM TripTiles
@@ -58,9 +58,9 @@ ORDER BY TripId;
 
 -------------------------------------------------------------------------------
 /*
-5.9. Trips where the Pm25 increases for at least 1.5 minutes and
-then decreases for at least 1.5 minutes, such that in both episodes the Pm25
-is higher than 125 and the temperature is higher than 20 degrees.
+Query 9. Trips where the Pm25 increases for at least 1.5 minutes and then
+decreases for at least 1.5 minutes, such that in both episodes, the Pm25 is
+higher than 125 and the temperature is higher than 20 degrees.
 
 IncrPm25: Trip[sign(derivative(Pm25)) > 0]
 DecrPm25: Trip[sign(derivative(Pm25)) < 0]
@@ -69,8 +69,8 @@ IncrDecrSpeed: Trip[before([IncrPm25 AND duration(IncrPm25) >= '1.5 minutes'],
 Trip[IncrDecrSpeed AND Pm25 > 125 AND Temperature > 20]
 */
 
-DROP TABLE IF EXISTS GQ5_10;
-CREATE TABLE GQ5_10(TripId, EpisodeId, StartTime, EndTime, Duration, Cells,
+DROP TABLE IF EXISTS GQ9;
+CREATE TABLE GQ9(TripId, EpisodeId, StartTime, EndTime, Duration, Cells,
   Trend, Pm25seq) AS
 WITH TrendPm25(TripId, StartTime, EndTime, CellId, Pm25, Trend) AS (
   SELECT TripId, StartTime, EndTime, CellId, Pm25, SIGN(Pm25 -
@@ -113,8 +113,8 @@ ORDER BY e.TripId;
 
 -- TEMPORAL VERSION
 
-DROP TABLE IF EXISTS TGQ5_10;
-CREATE TABLE TGQ5_10(TripId, EpisodeId, AtTime, Duration, Cells,
+DROP TABLE IF EXISTS TGQ9;
+CREATE TABLE TGQ9(TripId, EpisodeId, AtTime, Duration, Cells,
   Trend, Pm25) AS
 WITH TrendPm25(TripId, AtTime, CellId, Pm25, Trend) AS (
   SELECT TripId, AtTime, CellId, Pm25, trend(Pm25)
@@ -131,13 +131,13 @@ Episode(TripId, EpisodeId, AtTime, CellId, Pm25, Trend) AS (
     AtTime), AtTime, CellId, Pm25, Trend
   FROM EpisodeStart ),
 EpisodeDuration(TripId, EpisodeId, AtTime, Trend, Cells, Pm25) AS (
-  SELECT TripId, EpisodeId, spanUnion(AtTime ORDER BY AtTime),
+  SELECT TripId, EpisodeId, spansetUnion(AtTime ORDER BY AtTime),
     merge(array_agg(Trend ORDER BY Trend)),
     tintSeq(array_agg(tint(CellId, lower(AtTime)) ORDER BY AtTime)),
     merge(array_agg(Pm25 ORDER BY Pm25))
   FROM Episode
   GROUP BY TripId, EpisodeId
-  HAVING duration(spanUnion(AtTime ORDER BY AtTime)) >= interval '1.5 minutes'
+  HAVING duration(spansetUnion(AtTime ORDER BY AtTime)) >= interval '1.5 minutes'
     AND COUNT(*) >= 2 ),
 EpisodePair(TripId, IncrEpisode, DecrEpisode) AS (
   SELECT e1.TripId, e1.EpisodeId, e2.EpisodeId
@@ -152,18 +152,18 @@ ORDER BY e.TripId;
 -------------------------------------------------------------------------------
 
 /*
-Query 5.10. Trips that have at some point the \textsf{Pm25} lower than 100 and
-later reach a value higher than 400, such that the elapsed time between
-the increase of values in less than 1 minute.
+Query 10. Trips that have at some point a Pm25 lower than 100 and later reach
+a value higher than 400, such that the elapsed time between the increase of
+values is less than one minute.
 
 StartPm25: Trip[Pm25 < 100]
 EndPm25: Trip[Pm25 > 400]
-Trip[before(StartPm25, EndPm25) AND
+Trip[before(StartPm25, EndPm25) AND 
   lower(EndPm25) - lower(StartPm25) < '1 minute']
 */
 
-DROP TABLE IF EXISTS GQ5_11;
-CREATE TABLE GQ5_11(TripId, StartTime, EndTime, Duration, Cells, Pm25seq) AS
+DROP TABLE IF EXISTS GQ10;
+CREATE TABLE GQ10(TripId, StartTime, EndTime, Duration, Cells, Pm25seq) AS
 WITH StartPm25(TripId, StartStep, StartCell, StartTime, StartPm25) AS (
   SELECT TripId, StepNo, CellId, StartTime, Pm25
   FROM TripCells c1
@@ -196,8 +196,8 @@ ORDER BY TripId, StartTime;
 
 -- TEMPORAL VERSION
 
-DROP TABLE IF EXISTS TGQ5_11;
-CREATE TABLE TGQ5_11(TripId, AtTime, Duration, Cells, Pm25seq) AS
+DROP TABLE IF EXISTS TGQ10;
+CREATE TABLE TGQ10(TripId, AtTime, Duration, Cells, Pm25seq) AS
 WITH StartPm25(TripId, StartStep, StartCell, StartTime, StartPm25) AS (
   SELECT TripId, StepNo, CellId, lower(AtTime), Pm25
   FROM TripTiles c1
@@ -227,13 +227,19 @@ ORDER BY TripId, AtTime;
 
 -------------------------------------------------------------------------------
 /*
-Query 5.11. Trips that travel all their way under a temperature higher than
-25 degrees and such that at in at least two episodes longer than thirty minutes,
-the Pm25 is higher than 150.
+Query 11. Trips that travel all their way under a temperature higher than 25
+degrees such that in at least two episodes longer than ten minutes, the Pm25
+is higher than 150.
+
+HighTemp: Trip[Temperature > 25]
+TripTemp: Trip[HighTemp AND getTime(HighTemp) = getTime(Trip)]
+HighPm25: Trip[TripTemp AND Pm25 > 150]
+Episode: Trip[HighPm25 AND duration(HighPm25) > interval '10 minutes']
+Trip[before(Episode, Episode+)]
 */
 
-DROP TABLE IF EXISTS GQ5_12;
-CREATE TABLE GQ5_12(TripId, EpisodeId, StartTime, EndTime, Duration, Cells, Pm25seq) AS
+DROP TABLE IF EXISTS GQ11;
+CREATE TABLE GQ11(TripId, EpisodeId, StartTime, EndTime, Duration, Cells, Pm25seq) AS
 WITH TripTemp(TripId) AS (
   SELECT TripId 
   FROM TripCells
@@ -275,8 +281,8 @@ ORDER BY TripId, StartTime;
 
 -- TEMPORAL VERSION
 
-DROP TABLE IF EXISTS TGQ5_12;
-CREATE TABLE TGQ5_12(TripId, EpisodeId, AtTime, Duration, Cells, Pm25) AS
+DROP TABLE IF EXISTS TGQ11;
+CREATE TABLE TGQ11(TripId, EpisodeId, AtTime, Duration, Cells, Pm25) AS
 WITH TripTemp(TripId) AS (
   SELECT TripId 
   FROM TripTiles
@@ -315,9 +321,8 @@ ORDER BY TripId, StartTime;
 
 -------------------------------------------------------------------------------
 /*
-Query 5.12.
-Trips such that there is at least a 30-minute episode where the \textsf{Pm25}
-is higher than 300 in cloudy conditions and with humidity higher than 80\%.
+Query 12. Trips such that there is at least a 30-minute episode where the Pm25
+is higher than 300 in cloudy conditions and with humidity higher than 80%.
 
 HighPm25: Trip[Pm25 > 300]
 Episode: Trip[HighPm25 AND duration(HighPm25) > interval '30 minutes']
@@ -325,8 +330,8 @@ Trip[Episode AND CloudCover > 0 AND Humidity > 80]
 
 */
 
-DROP TABLE IF EXISTS Q5_13;
-CREATE TABLE Q5_13 AS
+DROP TABLE IF EXISTS Q12;
+CREATE TABLE Q12 AS
 WITH Segment(TripId, StartTime, EndTime, Pm25, CloudCover, Humidity, Valid) AS (
   SELECT TripId, StartTime, EndTime, Pm25, (Weather->>'CloudCover')::numeric,
     (Weather->>'Humidity')::numeric,
@@ -361,8 +366,8 @@ ORDER BY TripId, StartTime;
 
 -- TEMPORAL VERSION
 
-DROP TABLE IF EXISTS TQ5_13;
-CREATE TABLE Q5_13 AS
+DROP TABLE IF EXISTS TQ12;
+CREATE TABLE Q12 AS
 WITH Segment(TripId, StartTime, EndTime, Pm25, CloudCover, Humidity, Valid) AS (
   SELECT TripId, StartTime, EndTime, Pm25, (Weather->>'CloudCover')::numeric,
     (Weather->>'Humidity')::numeric,
@@ -394,13 +399,15 @@ ORDER BY TripId, StartTime;
 
 -------------------------------------------------------------------------------
 /*
-Query 5.13. Trips that traversed at least twice the same cell with exactly
-one different cell in between.
+Query 13. Trips that traverse at least twice the same cell with exactly one
+different cell in between.
+
+[Trips]; CellId = @c AND @c = prev(prev(@c)) AND @c <> prev(@c)
 */
 
 -- Overlapping patterns
-DROP TABLE IF EXISTS Q5_14_Over;
-CREATE TABLE Q5_14 AS
+DROP TABLE IF EXISTS Q13_Over;
+CREATE TABLE Q13_Over AS
 SELECT s.TripId, g.Pos, s.CellSeq[g.Pos : g.Pos + 2] AS MatchSeq
 FROM TripCellsSeq s
 CROSS JOIN LATERAL generate_series(1, array_length(s.CellSeq, 1) - 2) AS g(Pos)
@@ -409,8 +416,8 @@ s.CellSeq[g.Pos] <> s.CellSeq[g.Pos + 1]
 ORDER BY s.TripId;
 
 -- Disjoint patterns
-DROP TABLE IF EXISTS Q5_14_Disj;
-CREATE TABLE Q5_14_Disj AS
+DROP TABLE IF EXISTS Q13_Disj;
+CREATE TABLE Q13_Disj AS
 WITH AllMatches AS (
   SELECT s.TripId, g.Pos, s.CellSeq[g.Pos:g.Pos + 2] AS MatchSeq
   FROM TripCellsSeq s
@@ -426,8 +433,8 @@ WHERE PrevPos IS NULL OR Pos >= PrevPos + 3
 ORDER BY TripId, Pos;
 
 -- Overlapping patterns of A.*A
-DROP TABLE IF EXISTS Q5_14_AnyLen;
-CREATE TABLE Q5_14_AnyLen AS
+DROP TABLE IF EXISTS Q13_AnyLen;
+CREATE TABLE Q13_AnyLen AS
 SELECT s.TripId, g1.StartPos, g2.EndPos,
   s.CellSeq[g1.StartPos : g2.EndPos] AS MatchSeq
 FROM TripCellsSeq s
@@ -447,12 +454,12 @@ ORDER BY s.TripId, g1.StartPos;
 -- OLD VERSIONS WITH LAG
 -------------------------------------------------------------------------------
 /*
-Query 5.14. Trips that traversed at least twice the same cell with exactly
+Query 5.13. Trips that traversed at least twice the same cell with exactly
 one different cell in between.
 */
 
-DROP TABLE IF EXISTS Q5_14;
-CREATE TABLE Q5_14 AS
+DROP TABLE IF EXISTS Q13;
+CREATE TABLE Q13 AS
 -- Add the previous two cells to the rows
 WITH CellSeq(TripId, CellId, StartTime, EndTime, Prev2Cell, Prev2StartTime,
     PrevCell, PrevStartTime) AS (
@@ -470,8 +477,8 @@ ORDER BY TripId;
 
 -- TEMPORAL VERSION
 
-DROP TABLE IF EXISTS TQ5_14;
-CREATE TABLE TQ5_14 AS
+DROP TABLE IF EXISTS TQ13;
+CREATE TABLE TQ13 AS
 WITH CellSeq(TripId, StepNo, CellId, AtTime, Prev2Cell, PrevCell) AS (
   SELECT TripId, StepNo, CellId, AtTime, LAG(CellId, 2) OVER w, 
     LAG(CellId, 1) OVER w
@@ -485,16 +492,12 @@ ORDER BY TripId;
 
 -------------------------------------------------------------------------------
 /*
-Query 5.15. Trips that traversed at least twice the same cell with exactly
-two different cells in between. In this case we are asking for patterns like
-A -> B -> C -> A, with the following constraints:
-• The first and last cells are the same
-• There are exactly two cells in between, such the two middle cells are both
-different, that is B <> C, B <> A, C <> A
+Query 14. Trips that traverse at least twice the same district with exactly
+one different district in between.
 */
 
-DROP TABLE IF EXISTS Q5_15;
-CREATE TABLE Q5_15 AS
+DROP TABLE IF EXISTS Q14;
+CREATE TABLE Q14 AS
 -- Get the three previous visited cells
 WITH CellSeq(TripId, CellId, StartTime, Prev3Cell, Prev2Cell, PrevCell) AS (
   SELECT TripId, CellId, StartTime, LAG(CellId, 3) OVER w,
@@ -513,11 +516,8 @@ ORDER BY TripId;
 -- SELECT 63
 -- Time: 99.441 ms
 
-DROP TABLE IF EXISTS TQ5_15;
-CREATE TABLE TQ5_15 AS
-
-DROP TABLE IF EXISTS TQ5_15;
-CREATE TABLE TQ5_15 AS
+DROP TABLE IF EXISTS TQ14;
+CREATE TABLE TQ14 AS
 -- Get the three previous visited cells
 WITH CellSeq(TripId, CellId, AtTime, Prev3Cell, Prev2Cell, PrevCell) AS (
   SELECT TripId, CellId, AtTime, LAG(CellId, 3) OVER w,

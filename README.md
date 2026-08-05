@@ -79,7 +79,7 @@ The  repository also expects the data from the districts of New Delhi. In order 
 
 We load the OSM data into PostgreSQL as follows.
 ```bash
-osm2pgsql -U <user> -W -H localhost -P 5432 -d <database> --create --slim -G --hstore national_capital_territory_of_delhi.pbf
+osm2pgsql -U <user> -W -H localhost -P 5432 -d <database> --create --slim -G --hstore data/national_capital_territory_of_delhi.pbf
 ```
 
 Then, we can execute the script that load the Delhi input data into PostgreSQL as follows.
@@ -122,7 +122,7 @@ NOTICE:  Creating tables TripDistricts and TripDistrictsSeq
 
 (1 row)
 
-Time: 1441282.565 ms (24:01.283)
+Time: 963260.859 ms (16:03.261)
 delhi=#
 ```
 

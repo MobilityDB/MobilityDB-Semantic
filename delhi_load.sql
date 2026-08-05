@@ -31,7 +31,8 @@ BEGIN
     Pm1_0 double precision NOT NULL,
     Pm2_5 double precision NOT NULL,
     Pm10 double precision NOT NULL,
-    Geom geometry,
+    Geom geometry(Point,7760) GENERATED ALWAYS AS
+      (ST_Transform(ST_Point(Lon, Lat, 4326), 7760)) STORED,
     UNIQUE(DeviceId, T)
   );
 
@@ -46,13 +47,9 @@ BEGIN
     RAISE NOTICE 'Inserting %', fileName;
   END LOOP;
 
-  UPDATE DelhiInput
-  SET Geom = ST_Transform(ST_Point(Lon, Lat, 4326), 7760);
-
 -------------------------------------------------------------------------------
 
   RAISE NOTICE 'Creating tables WeatherInput and WeatherHourly';
-
 
   /* Compute the center point of the extent of the dataset 
 
