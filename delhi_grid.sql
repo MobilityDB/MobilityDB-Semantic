@@ -379,6 +379,7 @@ SELECT TripId, ep.ord AS EpisodeId,
 FROM Cond, unnest(spans(getTime(atValue(Valid, true)))) WITH ORDINALITY AS ep(s, ord)
 WHERE duration(ep.s) >= interval '30 minutes'
 ORDER BY TripId, StartTime;
+
 -- SELECT 71
 -------------------------------------------------------------------------------
 /*
@@ -432,6 +433,15 @@ ORDER BY s.TripId, g1.StartPos;
 
 -- SELECT 20193
 -- Time: 1574.928 ms (00:01.575)
+
+-- TEMPORAL VERSION
+SELECT s.TripId, g.Pos, s.CellSeq[g.Pos : g.Pos + 2] AS MatchSeq
+FROM TripTilesSeq s CROSS JOIN LATERAL 
+   generate_series(1, array_length(s.CellSeq, 1) - 2) AS g(Pos)
+WHERE s.CellSeq[g.Pos] = s.CellSeq[g.Pos + 2] AND s.CellSeq[g.Pos] <> s.CellSeq[g.Pos + 1] 
+ORDER BY s.TripId;
+
+-- SELECT 10631
 
 -------------------------------------------------------------------------------
 -- OLD VERSIONS WITH LAG
