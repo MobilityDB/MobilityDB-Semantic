@@ -366,37 +366,20 @@ ORDER BY TripId, StartTime;
 
 -- TEMPORAL VERSION
 
-DROP TABLE IF EXISTS TQ12;
+DROP TABLE IF EXISTS Q12;
 CREATE TABLE Q12 AS
-WITH Segment(TripId, StartTime, EndTime, Pm25, CloudCover, Humidity, Valid) AS (
-  SELECT TripId, StartTime, EndTime, Pm25, (Weather->>'CloudCover')::numeric,
-    (Weather->>'Humidity')::numeric,
-    CASE
-      WHEN Pm25 > 300 AND (Weather->>'CloudCover')::numeric > 0 AND
-        (Weather->>'Humidity')::numeric > 80
-      THEN 1 ELSE 0
-    END 
-  FROM TripTiles ),
-SegmentPrev(TripId, StartTime, EndTime, Pm25, CloudCover, Humidity, Valid,
-    PrevValid) AS (
-  SELECT *, LAG(Valid) OVER (PARTITION BY TripId ORDER BY StartTime)
-  FROM Segment ),
-Episode(TripId, EpisodeId, StartTime, EndTime, Pm25, CloudCover, Humidity, Valid,
-    PrevValid) AS (
-  SELECT TripId, SUM(CASE WHEN Valid = PrevValid THEN 0 ELSE 1 END) OVER
-    (PARTITION BY TripId ORDER BY StartTime), StartTime, EndTime, Pm25,
-    CloudCover, Humidity, Valid, PrevValid
-  FROM SegmentPrev )
-SELECT TripId, EpisodeId, MIN(StartTime) AS StartTime,
-  MAX(EndTime) AS EndTime, MAX(StartTime) - MIN(StartTime) AS Duration, 
-  array_agg(Pm25 ORDER BY StartTime) AS Pm25Seq,
-  array_agg(CloudCover ORDER BY StartTime) AS CloudCoverSeq,
-  array_agg(Humidity ORDER BY StartTime) AS HumiditySeq
-FROM Episode
-GROUP BY TripId, EpisodeId
-HAVING MAX(EndTime) - MIN(StartTime) >= '30 minutes' AND BOOL_AND(Valid = 1)
+WITH Cond(TripId, Valid) AS (
+  SELECT TripId,
+         mergeAgg((Pm25 #> 300) &
+                  (tfloat(Weather, 'CloudCover') #> 0) &
+                  (tfloat(Weather, 'Humidity') #> 80))
+  FROM TripTiles GROUP BY TripId )
+SELECT TripId, ep.ord AS EpisodeId,
+       lower(ep.s) AS StartTime, upper(ep.s) AS EndTime, duration(ep.s) AS Duration
+FROM Cond, unnest(spans(getTime(atValue(Valid, true)))) WITH ORDINALITY AS ep(s, ord)
+WHERE duration(ep.s) >= interval '30 minutes'
 ORDER BY TripId, StartTime;
-
+-- SELECT 71
 -------------------------------------------------------------------------------
 /*
 Query 13. Trips that traverse at least twice the same cell with exactly one
