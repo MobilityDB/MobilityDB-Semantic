@@ -473,6 +473,12 @@ WHERE Prev2Cell IS NOT NULL AND PrevCell IS NOT NULL AND
   CellId = Prev2Cell AND PrevCell <> CellId
 ORDER BY TripId;
 
+SELECT s.TripId, g.Pos, s.CellSeq[g.Pos : g.Pos + 2] AS MatchSeq
+FROM TripTilesSeq s
+  CROSS JOIN LATERAL generate_series(1, array_length(s.CellSeq, 1) - 2) AS g(Pos)
+WHERE s.CellSeq[g.Pos] = s.CellSeq[g.Pos + 2] AND s.CellSeq[g.Pos] <> s.CellSeq[g.Pos + 1] 
+ ORDER BY s.TripId;
+
 -------------------------------------------------------------------------------
 /*
 Query 14. Trips that traverse at least twice the same district with exactly
