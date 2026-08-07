@@ -1,3 +1,40 @@
+/*****************************************************************************
+ * Queries over the grid tessellation of Delhi, discrete and continuous
+ * version.
+ *
+ * The discrete version reads table TripCells, one row per visit of a trip to
+ * a cell, holding the AVERAGE of the measures over the visit. The continuous
+ * version reads table TripTiles, one row per visit, holding the part of the
+ * trip inside the cell as a temporal point and the measures as temporal
+ * values restricted to that period. The averaging is the whole difference
+ * between the two tables, and it is the reason why the answers of the two
+ * versions diverge much more here than in delhi_points_trips.sql, where the
+ * discrete version reads the observations themselves and the two versions
+ * agree almost everywhere.
+ *
+ * Two effects recur in the queries below and are worth naming once.
+ *
+ * Averaging hides what happens inside a cell. A trip whose Pm25 oscillates
+ * inside a cell is seen as a single value, so a threshold crossed inside the
+ * cell is invisible, and a succession of cell averages can be monotone while
+ * the trip itself is not. This makes the discrete version miss episodes
+ * (Query 10) and invent them (Query 9).
+ *
+ * The discrete version only knows the cells in which the trip was observed.
+ * A cell crossed between two observations is absent from TripCells, so the
+ * sequence of cells has holes. The continuous version derives the cells from
+ * the trajectory and therefore lists every cell traversed. This changes the
+ * answer of the pattern queries in both directions: a recovered cell creates
+ * matches for a variable-length pattern (Query 13) and destroys them for a
+ * fixed-length one (Query 14).
+ *
+ * When the condition of a query is about the whole trip rather than about one
+ * cell, the tiles of a trip are merged back with mergeAgg before the
+ * condition is evaluated. Evaluating it tile by tile answers a different
+ * question, namely whether the condition holds within each cell separately,
+ * which says nothing about the passage from one cell to the next.
+ *****************************************************************************/
+
 /*****************************************************************************/
 
 SET TIMEZONE TO 'Asia/Kolkata';
@@ -603,3 +640,160 @@ GROUP BY TripId
 ORDER BY TripId;
 
 /*****************************************************************************/
+
+/*****************************************************************************
+ * APPENDIX. The cell pattern of Query 13 under the three consumption modes.
+ *
+ * The section below isolates the effect of the recovered cells on the pattern
+ * A B A over the sequence of cells, under each of the three consumption modes
+ * described in delhi_districts_new.sql. It is kept apart from the queries
+ * above because it compares the two sequences of cells directly, without the
+ * measures.
+ *****************************************************************************/
+
+SET TIMEZONE TO 'Asia/Kolkata';
+SET DATESTYLE TO 'ISO, YMD';
+
+-------------------------------------------------------------------------------
+-- Overlapping matches: every position at which the pattern holds. A cell that
+-- closes one match may open the next, so a sequence {a,b,a,b,a} yields three.
+-------------------------------------------------------------------------------
+
+DROP TABLE IF EXISTS GP_Over;                                    -- discrete
+CREATE TABLE GP_Over AS
+SELECT s.TripId, g.Pos, s.CellSeq[g.Pos : g.Pos + 2] AS MatchSeq
+FROM TripCellsSeq s
+CROSS JOIN LATERAL generate_series(1, array_length(s.CellSeq, 1) - 2) AS g(Pos)
+WHERE s.CellSeq[g.Pos] = s.CellSeq[g.Pos + 2] AND
+  s.CellSeq[g.Pos] <> s.CellSeq[g.Pos + 1]
+ORDER BY s.TripId, g.Pos;
+
+-- 10478 rows
+
+DROP TABLE IF EXISTS TGP_Over;                                   -- continuous
+CREATE TABLE TGP_Over AS
+SELECT s.TripId, g.Pos, s.CellSeq[g.Pos : g.Pos + 2] AS MatchSeq
+FROM TripTilesSeq s
+CROSS JOIN LATERAL generate_series(1, array_length(s.CellSeq, 1) - 2) AS g(Pos)
+WHERE s.CellSeq[g.Pos] = s.CellSeq[g.Pos + 2] AND
+  s.CellSeq[g.Pos] <> s.CellSeq[g.Pos + 1]
+ORDER BY s.TripId, g.Pos;
+
+-- 10631 rows
+
+-------------------------------------------------------------------------------
+-- Disjoint matches: a match may not start before the previous one has ended, so
+-- the same {a,b,a,b,a} yields one.
+-------------------------------------------------------------------------------
+
+DROP TABLE IF EXISTS GP_Disj;                                    -- discrete
+CREATE TABLE GP_Disj AS
+WITH AllMatches AS (
+  SELECT s.TripId, g.Pos, s.CellSeq[g.Pos : g.Pos + 2] AS MatchSeq
+  FROM TripCellsSeq s
+  CROSS JOIN LATERAL generate_series(1, array_length(s.CellSeq, 1) - 2) AS g(Pos)
+  WHERE s.CellSeq[g.Pos] = s.CellSeq[g.Pos + 2] AND
+    s.CellSeq[g.Pos] <> s.CellSeq[g.Pos + 1] ),
+Ranked AS (
+  SELECT *, LAG(Pos) OVER (PARTITION BY TripId ORDER BY Pos) AS PrevPos
+  FROM AllMatches )
+SELECT TripId, Pos, MatchSeq
+FROM Ranked
+WHERE PrevPos IS NULL OR Pos >= PrevPos + 3
+ORDER BY TripId, Pos;
+
+-- 4270 rows
+
+DROP TABLE IF EXISTS TGP_Disj;                                   -- continuous
+CREATE TABLE TGP_Disj AS
+WITH AllMatches AS (
+  SELECT s.TripId, g.Pos, s.CellSeq[g.Pos : g.Pos + 2] AS MatchSeq
+  FROM TripTilesSeq s
+  CROSS JOIN LATERAL generate_series(1, array_length(s.CellSeq, 1) - 2) AS g(Pos)
+  WHERE s.CellSeq[g.Pos] = s.CellSeq[g.Pos + 2] AND
+    s.CellSeq[g.Pos] <> s.CellSeq[g.Pos + 1] ),
+Ranked AS (
+  SELECT *, LAG(Pos) OVER (PARTITION BY TripId ORDER BY Pos) AS PrevPos
+  FROM AllMatches )
+SELECT TripId, Pos, MatchSeq
+FROM Ranked
+WHERE PrevPos IS NULL OR Pos >= PrevPos + 3
+ORDER BY TripId, Pos;
+
+-- 4320 rows
+
+-------------------------------------------------------------------------------
+-- Matches of arbitrary length: A X* A, where the cell does not reappear in
+-- between, which is the sequence analogue of a simple cycle.
+-------------------------------------------------------------------------------
+
+DROP TABLE IF EXISTS GP_AnyLen;                                  -- discrete
+CREATE TABLE GP_AnyLen AS
+SELECT s.TripId, g1.StartPos, g2.EndPos,
+  s.CellSeq[g1.StartPos : g2.EndPos] AS MatchSeq
+FROM TripCellsSeq s
+CROSS JOIN LATERAL generate_series(1, array_length(s.CellSeq, 1) - 1) AS g1(StartPos)
+CROSS JOIN LATERAL generate_series(g1.StartPos + 2, array_length(s.CellSeq, 1)) AS g2(EndPos)
+WHERE s.CellSeq[g1.StartPos] = s.CellSeq[g2.EndPos]
+  AND NOT EXISTS (
+    SELECT 1 FROM generate_series(g1.StartPos + 1, g2.EndPos - 1) AS g(MidPos)
+    WHERE s.CellSeq[g.MidPos] = s.CellSeq[g1.StartPos] )
+ORDER BY s.TripId, g1.StartPos;
+
+-- 20193 rows
+
+DROP TABLE IF EXISTS TGP_AnyLen;                                 -- continuous
+CREATE TABLE TGP_AnyLen AS
+SELECT s.TripId, g1.StartPos, g2.EndPos,
+  s.CellSeq[g1.StartPos : g2.EndPos] AS MatchSeq
+FROM TripTilesSeq s
+CROSS JOIN LATERAL generate_series(1, array_length(s.CellSeq, 1) - 1) AS g1(StartPos)
+CROSS JOIN LATERAL generate_series(g1.StartPos + 2, array_length(s.CellSeq, 1)) AS g2(EndPos)
+WHERE s.CellSeq[g1.StartPos] = s.CellSeq[g2.EndPos]
+  AND NOT EXISTS (
+    SELECT 1 FROM generate_series(g1.StartPos + 1, g2.EndPos - 1) AS g(MidPos)
+    WHERE s.CellSeq[g.MidPos] = s.CellSeq[g1.StartPos] )
+ORDER BY s.TripId, g1.StartPos;
+
+-- 20497 rows
+
+-------------------------------------------------------------------------------
+-- Where the two approaches disagree, and why
+-------------------------------------------------------------------------------
+
+-- The trips whose cell sequence differs between the approaches
+SELECT count(*) AS TripsWithDifferentSequence
+FROM TripCellsSeq c JOIN TripTilesSeq t USING (TripId)
+WHERE c.CellSeq <> t.CellSeq;
+-- 215
+
+-- The two worked examples
+SELECT c.TripId, c.CellSeq AS DiscreteSeq, t.CellSeq AS ContinuousSeq
+FROM TripCellsSeq c JOIN TripTilesSeq t USING (TripId)
+WHERE c.TripId IN (275, 2684)
+ORDER BY c.TripId;
+-- 275  | {54,64,63,73,82,83} | {54,64,63,73,72,82,83}
+-- 2684 | {86,96,97,86,87}    | {86,96,97,87,86,87}
+
+-- The cell that the sampled sequence lacks is one the trip really traverses
+SELECT TripId, CellId, numSpans(AtTime) AS Visits, duration(AtTime) AS TimeInCell
+FROM TripTiles
+WHERE (TripId, CellId) IN ((275, 72), (2684, 87))
+ORDER BY TripId;
+-- 275  | 72 | 1 | 00:00:52.357513
+-- 2684 | 87 | 2 | 00:07:58.355908
+
+-- and no observation of trip 275 lies in cell 72, which is why the discrete
+-- sequence skips it
+SELECT count(*) AS SamplesOfTrip275InCell72
+FROM TripPoints p, Grid g
+WHERE p.TripId = 275 AND g.CellId = 72 AND g.Box @> stbox(p.Geom);
+-- 0, out of the 691 observations of the trip
+
+-- The matches that exist only in the continuous approach
+SELECT count(*) AS ContinuousOnlyOverlappingMatches
+FROM (SELECT TripId, MatchSeq FROM TGP_Over
+      EXCEPT ALL
+      SELECT TripId, MatchSeq FROM GP_Over) x;
+
+-------------------------------------------------------------------------------

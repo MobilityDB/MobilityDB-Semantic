@@ -442,21 +442,32 @@ ORDER BY f.TourId;
 WITH Step(TourId, Tour) AS (
   SELECT TourId, unnest(segments(Tour))
   FROM TempTour ),
-DayPart AS (
- SELECT *,
+DayPart(TourId, Tour, PartOfDay) AS (
+  SELECT TourId, Tour,
     CASE
-      WHEN EXTRACT(HOUR FROM lower(AtTime)) BETWEEN 8 AND 11
+      WHEN EXTRACT(HOUR FROM startTimestamp(Tour)) BETWEEN 8 AND 11
         THEN 'Morning'
-      WHEN EXTRACT(HOUR FROM lower(AtTime)) BETWEEN 12 AND 17
+      WHEN EXTRACT(HOUR FROM startTimestamp(Tour)) BETWEEN 12 AND 17
         THEN 'Afternoon'
-      WHEN EXTRACT(HOUR FROM lower(AtTime)) BETWEEN 18 AND 23
+      WHEN EXTRACT(HOUR FROM startTimestamp(Tour)) BETWEEN 18 AND 23
         THEN 'Evening'
       ELSE 'Night'
-    END AS partOfDay
+    END
   FROM Step )
-... 
--- Continue as the non-temporal above
--- I haven't found another way to write a temporal version of the above query
+SELECT DISTINCT f.TourId, startValue(f.Tour->>'StepNo')::integer AS FirstStep,
+  startValue(f.Tour->>'Name') AS FirstName,
+  startValue(s.Tour->>'StepNo')::integer AS SecondStep,
+  startValue(s.Tour->>'Name') AS SecondName, f.PartOfDay
+FROM DayPart f, DayPart s
+WHERE f.TourId = s.TourId AND f.Tour < s.Tour AND
+  startValue(s.Tour->>'Price') = 'Moderate' AND f.PartOfDay = s.PartOfDay
+ORDER BY f.TourId;
+
+/*
+ tourid | firststep |   firstname   | secondstep |    secondname    | partofday
+--------+-----------+---------------+------------+------------------+-----------
+      9 |         1 | Musee d'Orsay |          2 | Le Petit Italien | Morning
+*/
 
 /*****************************************************************************/
 
@@ -487,13 +498,14 @@ WITH ModeratePrices(TourId, Tour, Location) AS (
     text 'Moderate')))), Location
   FROM TempTour 
   WHERE atValue(Tour->>'Price', text 'Moderate') IS NOT NULL )
-SELECT TourId, startValue(Tour->>'StepNo')::integer AS StepNo,
-  startValue(Tour->>'Name') AS StepName, 
-  ST_Distance(startValue(m.Location), ST_Centroid(p.BufferGeom)) AS Distance
+SELECT DISTINCT m.TourId, startValue(m.Tour->>'StepNo')::integer AS StepNo,
+  startValue(m.Tour->>'Name') AS StepName,
+  ST_Distance(valueAtTimestamp(m.Location, startTimestamp(m.Tour)), p.Geom)
+    AS Distance
 FROM ModeratePrices m, PoI p
 WHERE p.Name = 'Centre Pompidou' AND
-  ST_DWithin(valueAtTimestamp(m.Location, startTimestamp(Tour)), p.Geom, 1000)
-ORDER BY TourId, Tour;
+  ST_DWithin(valueAtTimestamp(m.Location, startTimestamp(m.Tour)), p.Geom, 1000)
+ORDER BY m.TourId, StepNo;
 
 /*
  tourid | stepno |      stepname       |     distance

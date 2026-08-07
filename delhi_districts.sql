@@ -5,29 +5,29 @@ SET DATESTYLE TO 'ISO, YMD';
 
 -------------------------------------------------------------------------------
 /*
-Query 5.15. Trips that traversed at least twice the same district with exactly
+Query 15. Trips that traversed at least twice the same district with exactly
 one different district in between.
 */
 
 -- Overlapping patterns
-DROP TABLE IF EXISTS Q5_15_Over;
-CREATE TABLE Q5_15_Over AS
+DROP TABLE IF EXISTS Q15_Over;
+CREATE TABLE Q15_Over AS
 SELECT s.TripId, d.Pos, s.DistrictSeq[d.Pos : d.Pos + 2] AS MatchSeq
-FROM TripDistrictsSeq s
+FROM PointDistrictSeq s
 CROSS JOIN LATERAL generate_series(1, array_length(s.DistrictSeq, 1) - 2) AS d(Pos)
 WHERE s.DistrictSeq[d.Pos] = s.DistrictSeq[d.Pos + 2] AND
   s.DistrictSeq[d.Pos] <> s.DistrictSeq[d.Pos + 1]
 ORDER BY s.TripId;
 
--- SELECT 9262
--- Time: 70.657 ms
+-- SELECT 8957
+-- Time: 68.412 ms
 
 -- Disjoint patterns
-DROP TABLE IF EXISTS Q5_15_Disj;
-CREATE TABLE Q5_15_Disj AS
+DROP TABLE IF EXISTS Q15_Disj;
+CREATE TABLE Q15_Disj AS
 WITH AllMatches AS (
   SELECT s.TripId, d.Pos, s.DistrictSeq[d.Pos:d.Pos + 2] AS MatchSeq
-  FROM TripDistrictsSeq s
+  FROM PointDistrictSeq s
   CROSS JOIN LATERAL generate_series(1, array_length(s.DistrictSeq, 1) - 2) AS d(Pos)
   WHERE s.DistrictSeq[d.Pos] = s.DistrictSeq[d.Pos + 2] AND
     s.DistrictSeq[d.Pos] <> s.DistrictSeq[d.Pos + 1] ),
@@ -39,15 +39,15 @@ FROM Ranked
 WHERE PrevPos IS NULL OR Pos >= PrevPos + 3
 ORDER BY TripId, Pos;
 
--- SELECT 1906
--- Time: 71.043 ms
+-- SELECT 1891
+-- Time: 69.905 ms
 
 -- Overlapping patterns of A.*A
-DROP TABLE IF EXISTS Q5_15_AnyLen;
-CREATE TABLE Q5_15_AnyLen AS
+DROP TABLE IF EXISTS Q15_AnyLen;
+CREATE TABLE Q15_AnyLen AS
 SELECT s.TripId, g1.StartPos, g2.EndPos,
   s.DistrictSeq[g1.StartPos : g2.EndPos] AS MatchSeq
-FROM TripDistrictsSeq s
+FROM PointDistrictSeq s
   CROSS JOIN LATERAL generate_series(1, array_length(s.DistrictSeq, 1) - 1) AS g1(StartPos)
   CROSS JOIN LATERAL generate_series(g1.StartPos + 2, array_length(s.DistrictSeq, 1)) AS g2(EndPos)
 WHERE s.DistrictSeq[g1.StartPos] = s.DistrictSeq[g2.EndPos]
@@ -57,18 +57,18 @@ AND NOT EXISTS (
   WHERE s.DistrictSeq[d.MidPos] = s.DistrictSeq[g1.StartPos] )
 ORDER BY s.TripId, g1.StartPos;
 
--- SELECT 10201
--- Time: 251.100 ms
+-- SELECT 9903
+-- Time: 244.318 ms
 
 -------------------------------------------------------------------------------
 /*
-Query 5.16. Trips that traversed one district with the following development of
+Query 16. Trips that traversed one district with the following development of
 spatiotemporal predicates: Disjoint -> Meets -> Inside -> Meets -> Disjoint
 */
 
 -- Overlapping patterns
-DROP TABLE IF EXISTS Q5_16_Over;
-CREATE TABLE Q5_16_Over AS
+DROP TABLE IF EXISTS Q16_Over;
+CREATE TABLE Q16_Over AS
 WITH Meets(TripId, Name, AtTimestamp) AS (
   SELECT t.TripId, d.Name, 
     lower(unnest(spans(whenTrue(tIntersects(t.Trip, d.Boundary)))))
@@ -85,7 +85,7 @@ SELECT m1.TripId, m1.Name, m1.AtTimestamp, c.AtTime, m2.AtTimestamp
 FROM Meets m1, ContainedBy c, Meets m2
 WHERE m1.TripId = c.TripId AND m1.Name = c.Name AND
   m2.TripId = c.TripId AND m2.Name = c.Name AND
-  m2.AtTimestamp = upper(c.AtTime)
+  m1.AtTimestamp = lower(c.AtTime) AND m2.AtTimestamp = upper(c.AtTime)
 ORDER BY m1.TripId, m1.Name;
 
 /*****************************************************************************/
