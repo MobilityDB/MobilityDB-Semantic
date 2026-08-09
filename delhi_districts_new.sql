@@ -64,7 +64,7 @@ between the two versions is the array.
 */
 
 -- Overlapping patterns
-DROP TABLE IF EXISTS Q15_Over;
+DROP TABLE IF EXISTS Q14_Over;
 CREATE TABLE Q15_Over AS
 SELECT s.TripId, d.Pos, s.DistrictSeq[d.Pos : d.Pos + 2] AS MatchSeq
 FROM PointDistrictSeq s
@@ -78,8 +78,8 @@ ORDER BY s.TripId;
 
 -- TEMPORAL VERSION
 
-DROP TABLE IF EXISTS TQ15_Over;
-CREATE TABLE TQ15_Over AS
+DROP TABLE IF EXISTS TQ14_Over;
+CREATE TABLE TQ14_Over AS
 SELECT s.TripId, d.Pos, s.DistrictSeq[d.Pos : d.Pos + 2] AS MatchSeq
 FROM TripDistrictsSeq s
 CROSS JOIN LATERAL generate_series(1, array_length(s.DistrictSeq, 1) - 2) AS d(Pos)
@@ -96,8 +96,8 @@ ORDER BY s.TripId;
  * instead of A B A and the pattern does not hold. */
 
 -- Disjoint patterns
-DROP TABLE IF EXISTS Q15_Disj;
-CREATE TABLE Q15_Disj AS
+DROP TABLE IF EXISTS Q14_Disj;
+CREATE TABLE Q14_Disj AS
 WITH AllMatches AS (
   SELECT s.TripId, d.Pos, s.DistrictSeq[d.Pos:d.Pos + 2] AS MatchSeq
   FROM PointDistrictSeq s
@@ -117,8 +117,8 @@ ORDER BY TripId, Pos;
 
 -- TEMPORAL VERSION
 
-DROP TABLE IF EXISTS TQ15_Disj;
-CREATE TABLE TQ15_Disj AS
+DROP TABLE IF EXISTS TQ14_Disj;
+CREATE TABLE TQ14_Disj AS
 WITH AllMatches AS (
   SELECT s.TripId, d.Pos, s.DistrictSeq[d.Pos:d.Pos + 2] AS MatchSeq
   FROM TripDistrictsSeq s
@@ -144,8 +144,8 @@ ORDER BY TripId, Pos;
  * unobserved districts by a factor of twenty. */
 
 -- Overlapping patterns of A.*A
-DROP TABLE IF EXISTS Q15_AnyLen;
-CREATE TABLE Q15_AnyLen AS
+DROP TABLE IF EXISTS Q14_AnyLen;
+CREATE TABLE Q14_AnyLen AS
 SELECT s.TripId, g1.StartPos, g2.EndPos,
   s.DistrictSeq[g1.StartPos : g2.EndPos] AS MatchSeq
 FROM PointDistrictSeq s
@@ -163,7 +163,7 @@ ORDER BY s.TripId, g1.StartPos;
 
 -- TEMPORAL VERSION
 
-DROP TABLE IF EXISTS TQ15_AnyLen;
+DROP TABLE IF EXISTS TQ14_AnyLen;
 CREATE TABLE TQ15_AnyLen AS
 SELECT s.TripId, g1.StartPos, g2.EndPos,
   s.DistrictSeq[g1.StartPos : g2.EndPos] AS MatchSeq
@@ -222,8 +222,8 @@ instants of contact with the boundary, and whenTrue returns them exactly.
 */
 
 -- Overlapping patterns
-DROP TABLE IF EXISTS TQ16_Over;
-CREATE TABLE TQ16_Over AS
+DROP TABLE IF EXISTS TQ15_Over;
+CREATE TABLE TQ15_Over AS
 WITH Meets(TripId, Name, AtTimestamp) AS (
   SELECT t.TripId, d.Name,
     lower(unnest(spans(whenTrue(tIntersects(t.Trip, d.Boundary)))))
