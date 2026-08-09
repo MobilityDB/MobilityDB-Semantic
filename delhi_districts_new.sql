@@ -34,7 +34,7 @@ SET DATESTYLE TO 'ISO, YMD';
 
 -------------------------------------------------------------------------------
 /*
-Query 15. Trips that traversed at least twice the same district with exactly
+Query 14. Trips that traversed at least twice the same district with exactly
 one different district in between.
 
 The pattern is the regular expression A B A over the sequence of districts,
@@ -191,7 +191,7 @@ ORDER BY s.TripId, g1.StartPos;
 
 -------------------------------------------------------------------------------
 /*
-Query 16. Trips that traversed one district with the following development of
+Query 15. Trips that traversed one district with the following development of
 spatiotemporal predicates: Disjoint -> Meets -> Inside -> Meets -> Disjoint
 
 This query has no discrete version.
