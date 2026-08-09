@@ -65,7 +65,7 @@ between the two versions is the array.
 
 -- Overlapping patterns
 DROP TABLE IF EXISTS Q14_Over;
-CREATE TABLE Q15_Over AS
+CREATE TABLE Q14_Over AS
 SELECT s.TripId, d.Pos, s.DistrictSeq[d.Pos : d.Pos + 2] AS MatchSeq
 FROM PointDistrictSeq s
 CROSS JOIN LATERAL generate_series(1, array_length(s.DistrictSeq, 1) - 2) AS d(Pos)
