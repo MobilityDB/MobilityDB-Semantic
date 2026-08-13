@@ -452,17 +452,14 @@ ORDER BY TripId, StartTime;
 DROP TABLE IF EXISTS TQ12;
 CREATE TABLE TQ12 AS
 WITH SelectedTripsTime(TripId, Time) AS (
-  SELECT TripId, unnest(spans(whenTrue(Pm25 #> 300) * 
-    whenTrue(tfloat(Weather, 'CloudCover', 'step') #> 0) * 
-    whenTrue(tfloat(Weather, 'Humidity', 'step') #> 80)))
+  SELECT TripId, unnest(spans(whenTrue(Pm25 #> 300) * whenTrue(tfloat(Weather, 'CloudCover', 'step') #> 0) * 
+    whenTrue(tfloat(Weather, 'Humidity', 'step') #> 80))) 
   FROM Trips
-  WHERE whenTrue(Pm25 #> 300) IS NOT NULL AND
-    whenTrue(tfloat(Weather, 'CloudCover', 'step') #> 0) IS NOT NULL AND
+  WHERE whenTrue(Pm25 #> 300) IS NOT NULL AND whenTrue(tfloat(Weather, 'CloudCover', 'step') #> 0) IS NOT NULL AND
     whenTrue(tfloat(Weather, 'Humidity', 'step') #> 80) IS NOT NULL )
-SELECT d.TripId, atTime(d.Pm25, t.Time) AS Pm25, t.Time, 
-  duration(t.time) AS Duration
-FROM Trips d, SelectedTripsTime t
-WHERE d.TripId = t.TripId AND duration(Time) >= '30 minutes'
+SELECT d.TripId, atTime(d.Pm25, t.Time) AS Pm25, t.Time, duration(t.time) AS Duration
+FROM Trips d, SelectedTripsTime t 
+WHERE d.TripId = t.TripId AND duration(Time) >= '30 minutes' 
 ORDER BY TripId, Time;
 
 -- SELECT 71
