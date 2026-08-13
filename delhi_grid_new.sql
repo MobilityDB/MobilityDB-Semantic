@@ -137,7 +137,7 @@ WITH Restricted(TripId, StartTime, EndTime, CellId, Pm25) AS (
 TrendPm25(TripId, StartTime, EndTime, CellId, Pm25, Trend) AS (
   SELECT TripId, StartTime, EndTime, CellId, Pm25, SIGN(Pm25 -
     (LAG(Pm25) OVER (PARTITION BY TripId ORDER BY StartTime)))
-  FROM Rest ),
+  FROM Restricted ),
 EpisodeStart(TripId, StartTime, EndTime, CellId, Pm25, Trend,
     NewEpisode) AS (
   SELECT TripId, StartTime, EndTime, CellId, Pm25, Trend,
@@ -193,7 +193,7 @@ WITH Trip(TripId, Cells, Pm25, Weather) AS (
   FROM TripTiles
   GROUP BY TripId ),
 /* Restriction of the last line of the pattern, as in the discrete version */
-Rest(TripId, Cells, Pm25) AS (
+Restricted (TripId, Cells, Pm25) AS (
   SELECT TripId, Cells, atTime(Pm25, whenTrue(Pm25 #> 125) *
     whenTrue(tfloat(Weather, 'Temperature', 'step') #> 20))
   FROM Trip
@@ -203,7 +203,7 @@ Incr(TripId, Cells, Pm25) AS (
   SELECT TripId, Cells, unnest(sequences(atTime(Pm25,
     whenTrue(segmentMinDuration(atValue(trend(Pm25) #> 0, true),
       interval '1.5 minutes', false)))))
-  FROM Rest ),
+  FROM Restricted  ),
 Decr(TripId, Pm25) AS (
   SELECT TripId, unnest(sequences(atTime(Pm25,
     whenTrue(segmentMinDuration(atValue(trend(Pm25) #< 0, true),
