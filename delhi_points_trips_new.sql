@@ -245,23 +245,18 @@ Trip[before(StartPm25, EndPm25) AND
 
 DROP TABLE IF EXISTS Q10;
 CREATE TABLE Q10 AS
-WITH StartPm25 AS (
-  SELECT TripId, MIN(T) AS StartTime
-  FROM TripPoints
-  WHERE pm25 < 100
+WITH StartPm25 AS ( 
+  SELECT TripId, MIN(T) AS StartTime FROM TripPoints WHERE pm25 < 100
   GROUP BY TripId ),
 EndPm25 AS (
-  SELECT p.TripId, MIN(T) AS EndTime
-  FROM TripPoints p, StartPm25 s
-  WHERE p.TripId = s.TripId AND p.T >= s.StartTime AND pm25 > 400
+  SELECT p.TripId, MIN(T) AS EndTime FROM TripPoints p, StartPm25 s
+  WHERE p.TripId = s.TripId AND p.T >= s.StartTime AND pm25 > 400 
   GROUP BY p.TripId )
-SELECT p.TripId, s.StartTime, e.EndTime,
-  array_agg(p.pm25 ORDER BY p.T) AS Pm25Seq
-FROM TripPoints p, StartPm25 s, EndPm25 e
-WHERE p.TripId = s.TripId AND s.TripId = e.TripId AND 
-  s.StartTime < e.EndTime AND p.T BETWEEN s.StartTime AND e.EndTime AND 
-  EndTime - StartTime < '30 minutes'
-GROUP BY p.TripId, s.StartTime, e.EndTime
+SELECT p.TripId, s.StartTime, e.EndTime, array_agg(p.pm25 ORDER BY p.T) AS Pm25Seq
+FROM TripPoints p, StartPm25 s, EndPm25 e 
+  WHERE p.TripId = s.TripId AND s.TripId = e.TripId AND 
+  s.StartTime < e.EndTime AND p.T BETWEEN s.StartTime AND e.EndTime AND EndTime - StartTime < '30 minutes'
+GROUP BY p.TripId, s.StartTime, e.EndTime 
 ORDER BY p.TripId;
 
 -- SELECT 94
@@ -276,18 +271,17 @@ ORDER BY p.TripId;
 DROP TABLE IF EXISTS TQ10;
 CREATE TABLE TQ10 AS
 WITH StartPm25(TripId, StartTime, Pm25) AS (
-  SELECT TripId, lower(whenTrue(Pm25 #< 100)),
-    afterTimestamp(Pm25, lower(whenTrue(Pm25 #< 100)), false)
-  FROM Trips
+  SELECT TripId, lower(whenTrue(Pm25 #< 100)), afterTimestamp(Pm25, lower(whenTrue(Pm25 #< 100)), false)
+  FROM Trips 
   WHERE whenTrue(Pm25 #< 100) IS NOT NULL ),
 StartEndPm25(TripId, StartTime, EndTime) AS (
-  SELECT TripId, StartTime, lower(whenTrue(Pm25 #> 400))
-  FROM StartPm25
+  SELECT TripId, StartTime, lower(whenTrue(Pm25 #> 400)) 
+  FROM StartPm25 
   WHERE whenTrue(Pm25 #> 400) IS NOT NULL )
 SELECT t.TripId, atTime(Pm25, span(startTime, endTime))
 FROM Trips t, StartEndPm25 m
-WHERE t.TripId = m.TripId AND startTime < endTime and
-  EndTime - StartTime < interval '30 minutes' 
+WHERE t.TripId = m.TripId AND startTime < endTime  
+   AND EndTime - StartTime < interval '30 minutes' 
 ORDER BY TripId;
 
 -- SELECT SELECT 94
