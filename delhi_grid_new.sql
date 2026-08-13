@@ -251,34 +251,25 @@ Trip[before(StartPm25, EndPm25) AND
 
 DROP TABLE IF EXISTS GQ10;
 CREATE TABLE GQ10(TripId, StartTime, EndTime, Duration, Cells, Pm25seq) AS
-WITH StartPm25(TripId, StartStep, StartCell, StartTime, StartPm25) AS (
-  SELECT TripId, StepNo, CellId, StartTime, Pm25
-  FROM TripCells c1
-  WHERE StepNo = (
-    SELECT MIN(StepNo)
-    FROM TripCells c2
-    WHERE c1.TripId = c2.Tripid AND Pm25 < 100 ) ),
-EndPm25(TripId, EndStep, EndCell, EndTime, EndPm25) AS (
-  SELECT TripId, StepNo, CellId, EndTime, Pm25
-  FROM TripCells c1
-  WHERE StepNo = (
-    SELECT MIN(StepNo)
-    FROM TripCells c2
-    WHERE c1.TripId = c2.Tripid AND Pm25 > 400 ) ),
-Episode(TripId, StartTime, EndTime, Duration) AS (
-  SELECT s.TripId, StartTime, EndTime, EndTime - StartTime
-  FROM StartPm25 s, EndPm25 e
-  WHERE s.TripId = e.Tripid AND StartTime < EndTime AND
-    EndTime - StartTime >= '1 minute' )
-SELECT t.TripId, e.StartTime, e.EndTime, e.Duration,
-  array_agg(t.CellId ORDER BY t.StartTime) AS Cells,
-  array_agg(ROUND(t.Pm25::numeric, 2) ORDER BY t.StartTime) AS Pm25seq
-FROM TripCells t, Episode e
-WHERE t.TripId = e.TripId AND t.StartTime BETWEEN e.StartTime AND e.EndTime
-GROUP BY t.TripId, e.StartTime, e.EndTime, e.Duration
-ORDER BY TripId, StartTime;
+WITH TripTemp(TripId) AS (
+  SELECT TripId FROM TripCells GROUP BY TripId HAVING MIN((Weather->>'Temperature')::numeric) > 25 ),
+LowerPm25(TripId, StartTime, EndTime, CellId, Pm25, StartEpisode) AS (
+  SELECT TripId, StartTime, EndTime, CellId, Pm25, CASE WHEN Pm25 <= 150 OR LAG(Pm25) OVER
+    (PARTITION BY TripId ORDER BY StartTime) <= 150 THEN 1 ELSE 0 END
+  FROM TripCells WHERE TripId IN (SELECT TripId FROM TripTemp) ),
+Episode(TripId, EpisodeId, StartTime, EndTime, CellId, Pm25) AS (
+  SELECT TripId, SUM(StartEpisode) OVER (PARTITION BY TripId ORDER BY StartTime), StartTime, EndTime, CellId, Pm25
+  FROM LowerPm25 ),
+Pattern(TripId, EpisodeId, StartTime, EndTime, Duration, Cells, Pm25seq) AS (
+  SELECT TripId, EpisodeId, MIN(StartTime), MAX(EndTime), MAX(EndTime) - MIN(StartTime),
+    array_agg(CellId ORDER BY StartTime), array_agg(ROUND(Pm25::numeric, 2) ORDER BY StartTime)
+  FROM Episode WHERE Pm25 > 150 GROUP BY TripId, EpisodeId
+  HAVING MAX(EndTime) - MIN(StartTime) >= interval '10 minutes' AND COUNT(*) >= 2 ),
+SelectedTrip(TripId) AS ( SELECT TripId FROM Pattern GROUP BY TripId HAVING COUNT(*) >= 2 )
+SELECT TripId, EpisodeId, StartTime, EndTime, Duration, Cells, Pm25seq FROM Pattern
+WHERE TripId IN (SELECT TripId FROM SelectedTrip) ORDER BY TripId, StartTime;
 
--- SELECT 10
+-- SELECT 2
 -- Time: 974.391 ms
 
 -- TEMPORAL VERSION
