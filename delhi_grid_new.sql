@@ -282,27 +282,18 @@ WHERE TripId IN (SELECT TripId FROM SelectedTrip) ORDER BY TripId, StartTime;
 
 DROP TABLE IF EXISTS TGQ10;
 CREATE TABLE TGQ10(TripId, AtTime, Duration, Cells, Pm25seq) AS
-WITH Trip(TripId, Pm25) AS (
-  SELECT TripId, mergeAgg(Pm25)
-  FROM TripTiles
-  GROUP BY TripId ),
-Episode(TripId, AtTime, Duration) AS (
-  SELECT TripId, span(StartTime, EndTime), EndTime - StartTime
-  FROM (
-    SELECT TripId,
-      lower(startSpan(whenTrue(Pm25 #< 100))) AS StartTime,
-      lower(startSpan(whenTrue(Pm25 #> 400))) AS EndTime
-    FROM Trip
-    WHERE whenTrue(Pm25 #< 100) IS NOT NULL AND
-      whenTrue(Pm25 #> 400) IS NOT NULL ) Crossings
-  WHERE StartTime < EndTime AND EndTime - StartTime >= interval '1 minute' )
-SELECT t.TripId, e.AtTime, e.Duration,
-  tintSeq(array_agg(tint(CellId, lower(t.AtTime)) ORDER BY t.AtTime)),
-  merge(array_agg(atTime(t.Pm25, e.AtTime) ORDER BY t.AtTime)) AS Pm25seq
-FROM TripTiles t, Episode e
-WHERE t.TripId = e.TripId AND t.AtTime && e.AtTime
-GROUP BY t.TripId, e.AtTime, e.Duration
-ORDER BY TripId, AtTime;
+WITH Trip(TripId, Pm25, Weather) AS ( SELECT TripId, mergeAgg(Pm25), mergeAgg(Weather) FROM TripTiles GROUP BY TripId ),
+TripTemp(TripId, Pm25) AS ( SELECT TripId, Pm25 FROM Trip WHERE tfloat(Weather, 'Temperature', 'step') %> 25 ),
+Episode(TripId, EpisodeId, AtTime, Pm25) AS (
+  SELECT TripId, ep.ord, ep.s, atTime(Pm25, ep.s) FROM TripTemp, unnest(spans(whenTrue(Pm25 #> 150)))
+    WITH ORDINALITY AS ep(s, ord) WHERE duration(ep.s) >= interval '10 minutes' ),
+SelectedTrip(TripId) AS ( SELECT TripId FROM Episode GROUP BY TripId HAVING COUNT(*) >= 2 )
+SELECT e.TripId, e.EpisodeId, e.AtTime, duration(e.AtTime),
+  (SELECT tintSeq(array_agg(tint(t.CellId, lower(t.AtTime)) ORDER BY t.AtTime))
+   FROM TripTiles t WHERE t.TripId = e.TripId AND t.AtTime && e.AtTime), e.Pm25
+FROM Episode e WHERE e.TripId IN (SELECT TripId FROM SelectedTrip) ORDER BY e.TripId, lower(e.AtTime);
+
+-- SELECT 15
 
 -------------------------------------------------------------------------------
 /*
