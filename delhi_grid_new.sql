@@ -130,7 +130,7 @@ CREATE TABLE GQ9(TripId, EpisodeId, StartTime, EndTime, Duration, Cells,
  * is higher than 125 and the temperature is higher than 20 degrees. Table
  * Rest applies that restriction before the trend is computed, so that the
  * episodes are searched in the restricted trip, as the pattern states. */
-WITH Rest(TripId, StartTime, EndTime, CellId, Pm25) AS (
+WITH Restricted(TripId, StartTime, EndTime, CellId, Pm25) AS (
   SELECT TripId, StartTime, EndTime, CellId, Pm25
   FROM TripCells
   WHERE Pm25 > 125 AND (Weather->>'Temperature')::float > 20 ),
