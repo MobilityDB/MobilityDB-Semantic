@@ -620,19 +620,13 @@ ORDER BY TripId;
 
 DROP TABLE IF EXISTS TGQ14;
 CREATE TABLE TGQ14 AS
-WITH Matches(TripId, Pos, MatchSeq) AS (
-  SELECT s.TripId, g.Pos, s.CellSeq[g.Pos : g.Pos + 3]
-  FROM TripTilesSeq s
-  CROSS JOIN LATERAL generate_series(1, array_length(s.CellSeq, 1) - 3) AS g(Pos)
-  WHERE s.CellSeq[g.Pos] = s.CellSeq[g.Pos + 3] AND
-    s.CellSeq[g.Pos + 1] <> s.CellSeq[g.Pos + 2] AND
-    s.CellSeq[g.Pos + 1] <> s.CellSeq[g.Pos] AND
-    s.CellSeq[g.Pos + 2] <> s.CellSeq[g.Pos] )
-SELECT TripId, array_agg(MatchSeq[1]::text || ':' || MatchSeq[2]::text || ':' ||
-  MatchSeq[3]::text || ':' || MatchSeq[4]::text ORDER BY Pos) AS Patterns
-FROM Matches
-GROUP BY TripId
-ORDER BY TripId;
+SELECT s.TripId, d.Pos, s.DistrictSeq[d.Pos : d.Pos + 2] AS MatchSeq
+FROM TripDistrictsSeq s CROSS JOIN LATERAL generate_series(1, array_length(s.DistrictSeq, 1) - 2) AS d(Pos)
+WHERE s.DistrictSeq[d.Pos] = s.DistrictSeq[d.Pos + 2] 
+  AND s.DistrictSeq[d.Pos] <> s.DistrictSeq[d.Pos + 1] 
+ORDER BY s.TripId;
+
+-- SELECT 9262
 
 /*****************************************************************************/
 
