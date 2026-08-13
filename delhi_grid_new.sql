@@ -252,9 +252,12 @@ Trip[before(StartPm25, EndPm25) AND
 DROP TABLE IF EXISTS GQ10;
 CREATE TABLE GQ10(TripId, StartTime, EndTime, Duration, Cells, Pm25seq) AS
 WITH TripTemp(TripId) AS (
-  SELECT TripId FROM TripCells GROUP BY TripId HAVING MIN((Weather->>'Temperature')::numeric) > 25 ),
+  SELECT TripId 
+  FROM TripCells 
+  GROUP BY TripId HAVING MIN((Weather->>'Temperature')::numeric) > 25 ),
 LowerPm25(TripId, StartTime, EndTime, CellId, Pm25, StartEpisode) AS (
-  SELECT TripId, StartTime, EndTime, CellId, Pm25, CASE WHEN Pm25 <= 150 OR LAG(Pm25) OVER
+  SELECT TripId, StartTime, EndTime, CellId, Pm25, 
+  CASE WHEN Pm25 <= 150 OR LAG(Pm25) OVER
     (PARTITION BY TripId ORDER BY StartTime) <= 150 THEN 1 ELSE 0 END
   FROM TripCells WHERE TripId IN (SELECT TripId FROM TripTemp) ),
 Episode(TripId, EpisodeId, StartTime, EndTime, CellId, Pm25) AS (
@@ -263,10 +266,12 @@ Episode(TripId, EpisodeId, StartTime, EndTime, CellId, Pm25) AS (
 Pattern(TripId, EpisodeId, StartTime, EndTime, Duration, Cells, Pm25seq) AS (
   SELECT TripId, EpisodeId, MIN(StartTime), MAX(EndTime), MAX(EndTime) - MIN(StartTime),
     array_agg(CellId ORDER BY StartTime), array_agg(ROUND(Pm25::numeric, 2) ORDER BY StartTime)
-  FROM Episode WHERE Pm25 > 150 GROUP BY TripId, EpisodeId
+  FROM Episode 
+  WHERE Pm25 > 150 GROUP BY TripId, EpisodeId
   HAVING MAX(EndTime) - MIN(StartTime) >= interval '10 minutes' AND COUNT(*) >= 2 ),
 SelectedTrip(TripId) AS ( SELECT TripId FROM Pattern GROUP BY TripId HAVING COUNT(*) >= 2 )
-SELECT TripId, EpisodeId, StartTime, EndTime, Duration, Cells, Pm25seq FROM Pattern
+SELECT TripId, EpisodeId, StartTime, EndTime, Duration, Cells, Pm25seq
+FROM Pattern
 WHERE TripId IN (SELECT TripId FROM SelectedTrip) ORDER BY TripId, StartTime;
 
 -- SELECT 2
@@ -282,16 +287,24 @@ WHERE TripId IN (SELECT TripId FROM SelectedTrip) ORDER BY TripId, StartTime;
 
 DROP TABLE IF EXISTS TGQ10;
 CREATE TABLE TGQ10(TripId, AtTime, Duration, Cells, Pm25seq) AS
-WITH Trip(TripId, Pm25, Weather) AS ( SELECT TripId, mergeAgg(Pm25), mergeAgg(Weather) FROM TripTiles GROUP BY TripId ),
-TripTemp(TripId, Pm25) AS ( SELECT TripId, Pm25 FROM Trip WHERE tfloat(Weather, 'Temperature', 'step') %> 25 ),
+WITH Trip(TripId, Pm25, Weather) AS (
+  SELECT TripId, mergeAgg(Pm25), mergeAgg(Weather) 
+  FROM TripTiles GROUP BY TripId ),
+TripTemp(TripId, Pm25) AS ( 
+  SELECT TripId, Pm25 FROM Trip WHERE tfloat(Weather, 'Temperature', 'step') %> 25 ),
 Episode(TripId, EpisodeId, AtTime, Pm25) AS (
-  SELECT TripId, ep.ord, ep.s, atTime(Pm25, ep.s) FROM TripTemp, unnest(spans(whenTrue(Pm25 #> 150)))
-    WITH ORDINALITY AS ep(s, ord) WHERE duration(ep.s) >= interval '10 minutes' ),
-SelectedTrip(TripId) AS ( SELECT TripId FROM Episode GROUP BY TripId HAVING COUNT(*) >= 2 )
+  SELECT TripId, ep.ord, ep.s, atTime(Pm25, ep.s) 
+  FROM TripTemp, unnest(spans(whenTrue(Pm25 #> 150)))
+    WITH ORDINALITY AS ep(s, ord) 
+  WHERE duration(ep.s) >= interval '10 minutes' ),
+SelectedTrip(TripId) AS ( 
+  SELECT TripId FROM Episode GROUP BY TripId HAVING COUNT(*) >= 2 )
 SELECT e.TripId, e.EpisodeId, e.AtTime, duration(e.AtTime),
   (SELECT tintSeq(array_agg(tint(t.CellId, lower(t.AtTime)) ORDER BY t.AtTime))
-   FROM TripTiles t WHERE t.TripId = e.TripId AND t.AtTime && e.AtTime), e.Pm25
-FROM Episode e WHERE e.TripId IN (SELECT TripId FROM SelectedTrip) ORDER BY e.TripId, lower(e.AtTime);
+   FROM TripTiles t 
+   WHERE t.TripId = e.TripId AND t.AtTime && e.AtTime), e.Pm25
+FROM Episode e 
+  WHERE e.TripId IN (SELECT TripId FROM SelectedTrip) ORDER BY e.TripId, lower(e.AtTime);
 
 -- SELECT 15
 
