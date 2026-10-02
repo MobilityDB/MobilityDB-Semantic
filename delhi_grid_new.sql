@@ -208,7 +208,7 @@ Decr(TripId, Pm25) AS (
   SELECT TripId, unnest(sequences(atTime(Pm25,
     whenTrue(segmentMinDuration(atValue(trend(Pm25) #< 0, true),
       interval '1.5 minutes', false)))))
-  FROM Rest ),
+  FROM Restricted ),
 Pair(TripId, Cells, PairNo, Incr, Decr) AS (
   SELECT i.TripId, i.Cells, ROW_NUMBER() OVER (PARTITION BY i.TripId
     ORDER BY startTimestamp(i.Pm25)), i.Pm25, d.Pm25
@@ -251,62 +251,65 @@ Trip[before(StartPm25, EndPm25) AND
 
 DROP TABLE IF EXISTS GQ10;
 CREATE TABLE GQ10(TripId, StartTime, EndTime, Duration, Cells, Pm25seq) AS
-WITH TripTemp(TripId) AS (
-  SELECT TripId 
-  FROM TripCells 
-  GROUP BY TripId HAVING MIN((Weather->>'Temperature')::numeric) > 25 ),
-LowerPm25(TripId, StartTime, EndTime, CellId, Pm25, StartEpisode) AS (
-  SELECT TripId, StartTime, EndTime, CellId, Pm25, 
-  CASE WHEN Pm25 <= 150 OR LAG(Pm25) OVER
-    (PARTITION BY TripId ORDER BY StartTime) <= 150 THEN 1 ELSE 0 END
-  FROM TripCells WHERE TripId IN (SELECT TripId FROM TripTemp) ),
-Episode(TripId, EpisodeId, StartTime, EndTime, CellId, Pm25) AS (
-  SELECT TripId, SUM(StartEpisode) OVER (PARTITION BY TripId ORDER BY StartTime), StartTime, EndTime, CellId, Pm25
-  FROM LowerPm25 ),
-Pattern(TripId, EpisodeId, StartTime, EndTime, Duration, Cells, Pm25seq) AS (
-  SELECT TripId, EpisodeId, MIN(StartTime), MAX(EndTime), MAX(EndTime) - MIN(StartTime),
-    array_agg(CellId ORDER BY StartTime), array_agg(ROUND(Pm25::numeric, 2) ORDER BY StartTime)
-  FROM Episode 
-  WHERE Pm25 > 150 GROUP BY TripId, EpisodeId
-  HAVING MAX(EndTime) - MIN(StartTime) >= interval '10 minutes' AND COUNT(*) >= 2 ),
-SelectedTrip(TripId) AS ( SELECT TripId FROM Pattern GROUP BY TripId HAVING COUNT(*) >= 2 )
-SELECT TripId, EpisodeId, StartTime, EndTime, Duration, Cells, Pm25seq
-FROM Pattern
-WHERE TripId IN (SELECT TripId FROM SelectedTrip) ORDER BY TripId, StartTime;
+WITH StartPm25(TripId, StartStep, StartCell, StartTime, StartPm25) AS (
+  SELECT TripId, StepNo, CellId, StartTime, Pm25
+  FROM TripCells c1
+  WHERE StepNo = ( SELECT MIN(StepNo) FROM TripCells c2
+    WHERE c1.TripId = c2.Tripid AND Pm25 < 100 ) ),
+EndPm25(TripId, EndStep, EndCell, EndTime, EndPm25) AS (
+  SELECT TripId, StepNo, CellId, EndTime, Pm25
+  FROM TripCells c1
+  WHERE StepNo = ( SELECT MIN(StepNo) FROM TripCells c2
+    WHERE c1.TripId = c2.Tripid AND Pm25 > 400 ) ),
+Episode(TripId, StartTime, EndTime, Duration) AS (
+  SELECT s.TripId, StartTime, EndTime, EndTime - StartTime
+  FROM StartPm25 s, EndPm25 e
+  WHERE s.TripId = e.Tripid AND StartTime < EndTime
+    AND EndTime - StartTime < '1 minute' )
+SELECT t.TripId, e.StartTime, e.EndTime, e.Duration,
+  array_agg(t.CellId ORDER BY t.StartTime) AS Cells,
+  array_agg(ROUND(t.Pm25::numeric, 2) ORDER BY t.StartTime) AS Pm25seq
+FROM TripCells t, Episode e
+WHERE t.TripId = e.TripId AND t.StartTime BETWEEN e.StartTime AND e.EndTime
+GROUP BY t.TripId, e.StartTime, e.EndTime, e.Duration
+ORDER BY TripId, StartTime;
 
 -- SELECT 2
--- Time: 974.391 ms
 
 -- TEMPORAL VERSION
 
--- The two instants are read from the value itself: whenTrue gives the extent of
--- each condition and the first span of each is the first time the trip is below
--- 100 and the first time it is above 400. The discrete query instead locates the
--- first cell whose average crosses the threshold, which is a coarser instant and
--- depends on where the grid cuts the trip.
+-- The first cell below 100 and the first cell above 400 are those whose
+-- temporal Pm25 ever falls below 100 (?<) or ever rises above 400 (?>), where
+-- the discrete query tests the average of the visit. Averaging a cell visit
+-- hides a crossing of the threshold inside the visit, so the discrete query
+-- finds 2 trips and the continuous one 22.
 
 DROP TABLE IF EXISTS TGQ10;
 CREATE TABLE TGQ10(TripId, AtTime, Duration, Cells, Pm25seq) AS
-WITH Trip(TripId, Pm25, Weather) AS (
-  SELECT TripId, mergeAgg(Pm25), mergeAgg(Weather) 
-  FROM TripTiles GROUP BY TripId ),
-TripTemp(TripId, Pm25) AS ( 
-  SELECT TripId, Pm25 FROM Trip WHERE tfloat(Weather, 'Temperature', 'step') %> 25 ),
-Episode(TripId, EpisodeId, AtTime, Pm25) AS (
-  SELECT TripId, ep.ord, ep.s, atTime(Pm25, ep.s) 
-  FROM TripTemp, unnest(spans(whenTrue(Pm25 #> 150)))
-    WITH ORDINALITY AS ep(s, ord) 
-  WHERE duration(ep.s) >= interval '10 minutes' ),
-SelectedTrip(TripId) AS ( 
-  SELECT TripId FROM Episode GROUP BY TripId HAVING COUNT(*) >= 2 )
-SELECT e.TripId, e.EpisodeId, e.AtTime, duration(e.AtTime),
-  (SELECT tintSeq(array_agg(tint(t.CellId, lower(t.AtTime)) ORDER BY t.AtTime))
-   FROM TripTiles t 
-   WHERE t.TripId = e.TripId AND t.AtTime && e.AtTime), e.Pm25
-FROM Episode e 
-  WHERE e.TripId IN (SELECT TripId FROM SelectedTrip) ORDER BY e.TripId, lower(e.AtTime);
+WITH StartPm25(TripId, StartStep, StartCell, StartTime, StartPm25) AS (
+  SELECT TripId, StepNo, CellId, lower(AtTime), Pm25
+  FROM TripTiles t1
+  WHERE StepNo = ( SELECT MIN(StepNo) FROM TripTiles t2
+    WHERE t1.TripId = t2.Tripid AND Pm25 ?< 100 ) ),
+EndPm25(TripId, EndStep, EndCell, EndTime, EndPm25) AS (
+  SELECT TripId, StepNo, CellId, upper(AtTime), Pm25
+  FROM TripTiles t1
+  WHERE StepNo = ( SELECT MIN(StepNo) FROM TripTiles t2
+    WHERE t1.TripId = t2.Tripid AND Pm25 ?> 400 ) ),
+Episode(TripId, AtTime, Duration) AS (
+  SELECT s.TripId, span(StartTime, EndTime), duration(span(StartTime, EndTime))
+  FROM StartPm25 s, EndPm25 e
+  WHERE s.TripId = e.Tripid AND StartTime < EndTime
+    AND EndTime - StartTime < '1 minute' )
+SELECT t.TripId, e.AtTime, e.Duration,
+  tintSeq(array_agg(tint(CellId, lower(t.AtTime)) ORDER BY t.AtTime)),
+  array_agg(ROUND(t.Pm25, 2) ORDER BY t.AtTime) AS Pm25seq
+FROM TripTiles t, Episode e
+WHERE t.TripId = e.TripId AND t.AtTime && e.AtTime
+GROUP BY t.TripId, e.AtTime, e.Duration
+ORDER BY TripId, AtTime;
 
--- SELECT 15
+-- SELECT 22
 
 -------------------------------------------------------------------------------
 /*
@@ -591,8 +594,8 @@ ORDER BY s.TripId, g.Pos;
 
 -------------------------------------------------------------------------------
 /*
-Query 14. Trips that traverse at least twice the same district with exactly
-one different district in between.
+Query 14. Trips that return to a cell after exactly two different cells in
+between.
 */
 
 DROP TABLE IF EXISTS GQ14;
@@ -620,13 +623,20 @@ ORDER BY TripId;
 
 DROP TABLE IF EXISTS TGQ14;
 CREATE TABLE TGQ14 AS
-SELECT s.TripId, d.Pos, s.DistrictSeq[d.Pos : d.Pos + 2] AS MatchSeq
-FROM TripDistrictsSeq s CROSS JOIN LATERAL generate_series(1, array_length(s.DistrictSeq, 1) - 2) AS d(Pos)
-WHERE s.DistrictSeq[d.Pos] = s.DistrictSeq[d.Pos + 2] 
-  AND s.DistrictSeq[d.Pos] <> s.DistrictSeq[d.Pos + 1] 
-ORDER BY s.TripId;
+WITH Matches(TripId, Pos, MatchSeq) AS (
+  SELECT s.TripId, g.Pos, s.CellSeq[g.Pos : g.Pos + 3]
+  FROM TripTilesSeq s
+    CROSS JOIN LATERAL generate_series(1, array_length(s.CellSeq, 1) - 3) AS g(Pos)
+  WHERE s.CellSeq[g.Pos] = s.CellSeq[g.Pos + 3]
+    AND s.CellSeq[g.Pos + 1] <> s.CellSeq[g.Pos + 2]
+    AND s.CellSeq[g.Pos + 1] <> s.CellSeq[g.Pos]
+    AND s.CellSeq[g.Pos + 2] <> s.CellSeq[g.Pos] )
+SELECT TripId, array_agg(array_to_string(MatchSeq, ':') ORDER BY Pos) AS Patterns
+FROM Matches
+GROUP BY TripId
+ORDER BY TripId;
 
--- SELECT 9262
+-- SELECT 0
 
 /*****************************************************************************/
 

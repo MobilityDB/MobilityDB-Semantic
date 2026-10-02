@@ -207,11 +207,11 @@ ORDER BY p.TripId, p.PairNo, e.Trend DESC;
 -------------------------------------------------------------------------------
 
 SELECT DISTINCT TripId FROM q9 EXCEPT SELECT DISTINCT TripId FROM tq9 ORDER BY 1;
-(0 rows)
+-- (0 rows)
 
 SELECT DISTINCT TripId FROM tq9 EXCEPT SELECT DISTINCT TripId FROM q9 ORDER BY 1;
-   2245
-(1 row)
+-- 2245
+-- (1 row)
 
 /*
 The missing trip in q9 is 2245 and it is not considered in the non-temporal 
@@ -290,10 +290,10 @@ ORDER BY TripId;
 -------------------------------------------------------------------------------
 
 SELECT DISTINCT tripid FROM tq10 EXCEPT SELECT DISTINCT tripid FROM q10 ORDER BY 1 LIMIT 5;
-(0 rows)
+-- (0 rows)
 
 SELECT DISTINCT tripid FROM q10 EXCEPT SELECT DISTINCT tripid FROM tq10 ORDER BY 1 LIMIT 5;
-(0 rows)
+-- (0 rows)
 
 -------------------------------------------------------------------------------
  

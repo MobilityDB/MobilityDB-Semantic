@@ -8,7 +8,7 @@ located from its label in the paper and a divergence can be recognised without
 running anything.
 
 The repository holds queries that the paper has no room for. They are marked
-*repository only* and are not less important: three of them carry the clearest
+*repository only* and are not less important: `GQ14` carries the clearest
 evidence of the difference between the two approaches.
 
 ## Files
@@ -50,8 +50,8 @@ cells that hold no observation.
 | --- | --- | --- | --- | --- |
 | `que:grid-allincrease` | `GQ8` / `TGQ8` | 1102 | 708 | only 57 trips in common. The discrete version drops the trips that visit a single cell and accepts trips whose averages increase while the value falls inside a cell |
 | `que:grid-incr-decr` | `GQ9` / `TGQ9` | 348 | 40 | 149 trips against 20. Averaging turns an oscillating trip into a long monotone run of cell values. The complete-trip version of the same query, which is discrete but not averaged, finds 19 trips and thus confirms the continuous answer |
-| repository only | `GQ10` / `TGQ10` | 10 | 182 | averaging hides the threshold crossings: 5062 trips reach below 100 in the continuous version against 4338 in the discrete one, and 2950 against 1849 above 400 |
-| repository only | `GQ11` / `TGQ11` | 4 | 8 | same effect on episodes of at least ten minutes |
+| `que:grid-span` | `GQ10` / `TGQ10` | 2 | 22 | averaging hides the threshold crossings: 5062 trips reach below 100 in the continuous version against 4338 in the discrete one, and 2950 against 1849 above 400 |
+| `que:grid-higher` | `GQ11` / `TGQ11` | 4 | 8 | same effect on episodes of at least ten minutes |
 | `que:grid-raintemphm` | `GQ12` / `TGQ12` | 92 | 71 | 85 trips against 66 |
 | `que:grid_cell_patt1` | `GQ13` / `TGQ13` | 10478 | 10631 | the continuous version knows the cells traversed without an observation |
 | repository only | `GQ14` / `TGQ14` | 63 | 0 | a recovered cell *destroys* a fixed-length match: `A B A` becomes `A B C A`. This is the direction opposite to `GQ13`, and it is the reason a pattern of fixed length should be avoided when the sampling is not uniform |
