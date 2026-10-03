@@ -73,7 +73,7 @@ WHERE s.DistrictSeq[d.Pos] = s.DistrictSeq[d.Pos + 2] AND
   s.DistrictSeq[d.Pos] <> s.DistrictSeq[d.Pos + 1]
 ORDER BY s.TripId;
 
--- SELECT 8957
+-- SELECT 8542
 -- Time: 68.412 ms
 
 -- TEMPORAL VERSION
@@ -87,11 +87,11 @@ WHERE s.DistrictSeq[d.Pos] = s.DistrictSeq[d.Pos + 2] AND
   s.DistrictSeq[d.Pos] <> s.DistrictSeq[d.Pos + 1]
 ORDER BY s.TripId;
 
--- SELECT 9262
+-- SELECT 8849
 -- Time: 70.657 ms
 
-/* The query text is identical, the answers are not: 8957 against 9262. The
- * 305 additional matches are the ones in which the middle district B was
+/* The query text is identical, the answers are not: 8542 against 8849. The
+ * 307 additional matches are the ones in which the middle district B was
  * traversed without being observed, so that the discrete sequence reads A A
  * instead of A B A and the pattern does not hold. */
 
@@ -112,7 +112,7 @@ FROM Ranked
 WHERE PrevPos IS NULL OR Pos >= PrevPos + 3
 ORDER BY TripId, Pos;
 
--- SELECT 1891
+-- SELECT 1788
 -- Time: 69.905 ms
 
 -- TEMPORAL VERSION
@@ -133,11 +133,11 @@ FROM Ranked
 WHERE PrevPos IS NULL OR Pos >= PrevPos + 3
 ORDER BY TripId, Pos;
 
--- SELECT 1906
+-- SELECT 1803
 -- Time: 71.043 ms
 
-/* 1891 against 1906. The gap is much smaller than in the overlapping mode,
- * 15 instead of 305, because the disjoint mode keeps at most one match every
+/* 1788 against 1803. The gap is much smaller than in the overlapping mode,
+ * 15 instead of 307, because the disjoint mode keeps at most one match every
  * three positions and most of the matches that the continuous sequence adds
  * fall inside a stretch that already contained an accepted match. Reporting
  * only the disjoint answer would therefore understate the effect of the
@@ -158,7 +158,7 @@ AND NOT EXISTS (
   WHERE s.DistrictSeq[d.MidPos] = s.DistrictSeq[g1.StartPos] )
 ORDER BY s.TripId, g1.StartPos;
 
--- SELECT 9903
+-- SELECT 9487
 -- Time: 244.318 ms
 
 -- TEMPORAL VERSION
@@ -177,10 +177,10 @@ AND NOT EXISTS (
   WHERE s.DistrictSeq[d.MidPos] = s.DistrictSeq[g1.StartPos] )
 ORDER BY s.TripId, g1.StartPos;
 
--- SELECT 10201
+-- SELECT 9787
 -- Time: 251.100 ms
 
-/* 9903 against 10201. The relaxed pattern is the one for which the two
+/* 9487 against 9787. The relaxed pattern is the one for which the two
  * sequences differ the most in relative terms, and its direction is the
  * opposite of the one observed on the grid for the fixed-length pattern: a
  * district recovered in the middle of a stretch breaks a fixed-length match
@@ -210,9 +210,9 @@ so a discrete version of the query returns the empty answer. The usual way out
 is to replace Meets by a proximity test with a tolerance, which does return an
 answer, but an arbitrary one:
 
-  ST_DWithin(d.Boundary, p.Geom, 1)    14397 observations
-  ST_DWithin(d.Boundary, p.Geom, 10)  148525 observations
-  ST_DWithin(d.Boundary, p.Geom, 50)  640954 observations
+  ST_DWithin(d.Boundary, p.Geom, 1)    14539 pairs
+  ST_DWithin(d.Boundary, p.Geom, 10)  149537 pairs
+  ST_DWithin(d.Boundary, p.Geom, 50)  642689 pairs
 
 The tolerance is not a property of the query, it is a repair of the sampling,
 and every answer it produces has to be read together with the value chosen. In
@@ -244,7 +244,7 @@ WHERE m1.TripId = c.TripId AND m1.Name = c.Name AND
   m1.AtTimestamp = lower(c.AtTime) AND m2.AtTimestamp = upper(c.AtTime)
 ORDER BY m1.TripId, m1.Name;
 
--- SELECT 12551
+-- SELECT 12792
 -- Time: 68901.744 ms (01:08.902)
 
 /* The five predicates of the development are read off two temporal Booleans.

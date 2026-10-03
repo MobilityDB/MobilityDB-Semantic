@@ -64,10 +64,10 @@ any-length.
 
 | Paper | Query | Discrete | Continuous | |
 | --- | --- | --- | --- | --- |
-| `que:point-district` | `Q15_Over` / `TQ15_Over` | 8957 | 9262 | the 305 additional matches are those whose middle district carries no observation |
-| `que:point-district` | `Q15_Disj` / `TQ15_Disj` | 1891 | 1906 | the disjoint mode keeps at most one match every three positions and so understates the effect by a factor of twenty |
-| `que:point-district` | `Q15_AnyLen` / `TQ15_AnyLen` | 9903 | 10201 | a recovered district can only help a variable-length pattern |
-| `que:point-development` | `TQ16_Over` | — | 12551 | no discrete version exists. Of the 7087619 observations, **zero** lie on a district boundary, so the predicate Meets is never observed. Replacing it by a tolerance returns 14397, 148525 or 640954 candidate observations at 1 m, 10 m and 50 m |
+| `que:point-district` | `Q14_Over` / `TQ14_Over` | 8542 | 8849 | the 307 additional matches are those whose middle district carries no observation |
+| `que:point-district` | `Q14_Disj` / `TQ14_Disj` | 1788 | 1803 | the disjoint mode keeps at most one match every three positions and so understates the effect by a factor of twenty |
+| `que:point-district` | `Q14_AnyLen` / `TQ14_AnyLen` | 9487 | 9787 | a recovered district can only help a variable-length pattern |
+| `que:point-development` | `TQ15_Over` | — | 12792 | no discrete version exists. Of the 7087619 observations, **zero** lie on a district boundary, so the predicate Meets is never observed. Replacing it by a tolerance returns 14539, 149537 or 642689 candidate pairs of an observation and a district at 1 m, 10 m and 50 m |
 
 ## Semantic tours — `paris_queries.sql`
 

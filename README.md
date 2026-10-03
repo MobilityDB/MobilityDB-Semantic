@@ -75,11 +75,12 @@ https://open-meteo.com/en/docs/historical-weather-api?start_date=2020-11-01&end_
 ```
 We downloaded the data into into a CSV file, and did some basic preparation of this file dropping the first three rows. For simplicity, and given the very small variation within the city, we assume that these hourly data remain uniform in all the city area considered in this study. 
 
-The  repository also expects the data from the districts of New Delhi. In order to get this data we need to download OSM data from New Delhi obtained from the this [link](https://geo2day.com/asia/india/national_capital_territory_of_delhi.html). The file `national_capital_territory_of_delhi.pbf` must be located in the home directory.
+The  repository also expects the data from the districts of New Delhi. They are the administrative boundaries of the OpenStreetMap extract of India of January 1, 2021, the end of the observation period, which holds the eleven districts of Delhi used by the queries. Delhi has since been divided into thirteen districts, so a current extract gives other districts and other answers to the district queries. The extract is the file `india-210101.osm.pbf` published by [Geofabrik](https://download.geofabrik.de/asia/india-210101.osm.pbf).
 
-We load the OSM data into PostgreSQL as follows.
+We load the OSM data restricted to the bounding box of Delhi into PostgreSQL as follows.
 ```bash
-osm2pgsql -U <user> -W -H localhost -P 5432 -d <database> --create --slim -G --hstore data/national_capital_territory_of_delhi.pbf
+osm2pgsql -U <user> -W -H localhost -P 5432 -d <database> --create --slim -G --hstore \
+  --bbox 76.83,28.40,77.35,28.89 data/india-210101.osm.pbf
 ```
 
 Then, we can execute the script that load the Delhi input data into PostgreSQL as follows.
