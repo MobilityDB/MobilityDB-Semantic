@@ -164,7 +164,7 @@ ORDER BY s.TripId, g1.StartPos;
 -- TEMPORAL VERSION
 
 DROP TABLE IF EXISTS TQ14_AnyLen;
-CREATE TABLE TQ15_AnyLen AS
+CREATE TABLE TQ14_AnyLen AS
 SELECT s.TripId, g1.StartPos, g2.EndPos,
   s.DistrictSeq[g1.StartPos : g2.EndPos] AS MatchSeq
 FROM TripDistrictsSeq s
